@@ -25,11 +25,16 @@ Aplikasi memiliki 5 tabel utama: `users`, `lecturers`, `students`, `consultation
     "role": "student"
 }
 ```
+## Post Users
+
+![Post Users](screenshoot/Post_Data.png)
 
 **Lihat Semua User**
 * **URL:** `/users`
 * **Method:** `GET`
+## Get Users
 
+![Get Users](screenshoot/Get_Data.png)
 ---
 
 ### B. Consultation Log (Advanced) - POST & GET
@@ -40,11 +45,16 @@ Aplikasi memiliki 5 tabel utama: `users`, `lecturers`, `students`, `consultation
 * **Parameters:**
   * `user_id` (Text): ID User mahasiswa
   * `audio` (File): File rekaman `.mp3`
+## Post Audio
+
+![Post Audio](screenshoot/Post_Audio.png)
 
 **Lihat Semua Log & Feedback**
 * **URL:** `/api/consultation`
 * **Method:** `GET` (Menggunakan Preload untuk join data)
+## Get Audio
 
+![Get Audio](screenshoot/Get_Audio.png)
 ---
 
 ## 4. Cara Pengujian Menggunakan Postman
@@ -55,7 +65,6 @@ Aplikasi memiliki 5 tabel utama: `users`, `lecturers`, `students`, `consultation
 3. Ke tab **Body** -> **form-data**.
 4. Key: `user_id` (Value: `2`), Key: `audio` (Ubah tipe ke **File**, masukkan file mp3).
 5. Klik **Send**.
-
 ---
 
 ## 5. File Database
