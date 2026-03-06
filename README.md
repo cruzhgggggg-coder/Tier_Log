@@ -56,10 +56,6 @@ Aplikasi memiliki 5 tabel utama: `users`, `lecturers`, `students`, `consultation
 4. Key: `user_id` (Value: `2`), Key: `audio` (Ubah tipe ke **File**, masukkan file mp3).
 5. Klik **Send**.
 
-### Screenshot Bukti Pengujian (Postman):
-*(Silakan upload screenshot Postman Anda ke repositori ini dan update link di bawah)*
-![Screenshot Postman Placeholder](https://github.com/cruzhgggggg-coder/Tier_Log/blob/main/screenshot_postman.png?raw=true)
-
 ---
 
 ## 5. File Database
