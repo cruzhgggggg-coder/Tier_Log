@@ -63,7 +63,7 @@ CREATE TABLE `feedback_items` (
   CONSTRAINT `fk_consultation_logs_feedback_items` FOREIGN KEY (`log_id`) REFERENCES `consultation_logs` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
---USERS
+
 INSERT INTO `users` (`id`, `email`, `password`, `role`, `created_at`, `updated_at`) VALUES
 (1, 'dosen1@university.ac.id', 'hashed_pass_1', 'lecturer', NOW(), NOW()),
 (2, 'mhs1@university.ac.id', 'hashed_pass_2', 'student', NOW(), NOW()),
@@ -75,6 +75,6 @@ INSERT INTO `lecturers` (`id`, `user_id`, `nip`, `name`, `faculty`) VALUES
 INSERT INTO `students` (`id`, `user_id`, `lecturer_id`, `nim`, `name`, `prodi`, `thesis_title`) VALUES
 (1, 2, 1, '2200010001', 'Budi Mahasiswa', 'Teknik Informatika', 'Implementasi Microservices pada Sistem Log Bimbingan');
 
--- CONSULTATION LOGS
+
 INSERT INTO `consultation_logs` (`id`, `user_id`, `audio_filename`, `transcript_filename`, `created_at`) VALUES
 (1, 2, '1772789873064118400_One Direction - Night Changes.mp3', '1772789873064118400_transcript.txt', '2026-03-06 16:37:53.081');
