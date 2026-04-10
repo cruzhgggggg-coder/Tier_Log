@@ -58,33 +58,60 @@ func CreateConsultationLog(c *gin.Context) {
 		return
 	}
 
-	file, err := c.FormFile("audio")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Audio file is required"})
-		return
-	}
+	audioFile, audioErr := c.FormFile("audio")
+	docFile, docErr := c.FormFile("document")
 
-	if filepath.Ext(file.Filename) != ".mp3" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Only .mp3 files are allowed"})
+	if audioErr != nil && docErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "At least an audio file or a document is required"})
 		return
 	}
 
 	timestamp := time.Now().UnixNano()
-	audioFilename := fmt.Sprintf("%d_%s", timestamp, file.Filename)
-	audioPath := filepath.Join("storage", "audio", audioFilename)
+	var audioFilename string
+	var transcriptFilename string
 
-	if err := c.SaveUploadedFile(file, audioPath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save audio file"})
-		return
+	if audioErr == nil {
+		ext := filepath.Ext(audioFile.Filename)
+		if ext != ".mp3" && ext != ".wav" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Only .mp3 and .wav files are allowed for audio"})
+			return
+		}
+		audioFilename = fmt.Sprintf("%d_%s", timestamp, audioFile.Filename)
+		audioPath := filepath.Join("storage", "audio", audioFilename)
+
+		os.MkdirAll(filepath.Join("storage", "audio"), os.ModePerm)
+		if err := c.SaveUploadedFile(audioFile, audioPath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save audio file"})
+			return
+		}
 	}
 
-	transcriptFilename := fmt.Sprintf("%d_transcript.txt", timestamp)
-	transcriptPath := filepath.Join("storage", "transcript", transcriptFilename)
+	if docErr == nil {
+		ext := filepath.Ext(docFile.Filename)
+		allowedExts := map[string]bool{".docx": true, ".doc": true, ".pdf": true, ".txt": true}
+		if !allowedExts[ext] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Only .docx, .doc, .pdf, or .txt files are allowed for documents"})
+			return
+		}
+		transcriptFilename = fmt.Sprintf("%d_%s", timestamp, docFile.Filename)
+		docPath := filepath.Join("storage", "transcript", transcriptFilename)
 
-	dummyContent := []byte("This is a dummy transcript placeholder for the uploaded audio.")
-	if err := os.WriteFile(transcriptPath, dummyContent, 0644); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate dummy transcript"})
-		return
+		os.MkdirAll(filepath.Join("storage", "transcript"), os.ModePerm)
+		if err := c.SaveUploadedFile(docFile, docPath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save document file"})
+			return
+		}
+	} else if audioErr == nil {
+
+		transcriptFilename = fmt.Sprintf("%d_transcript.txt", timestamp)
+		transcriptPath := filepath.Join("storage", "transcript", transcriptFilename)
+
+		os.MkdirAll(filepath.Join("storage", "transcript"), os.ModePerm)
+		dummyContent := []byte("This is a dummy transcript placeholder for the uploaded audio.")
+		if err := os.WriteFile(transcriptPath, dummyContent, 0644); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate dummy transcript"})
+			return
+		}
 	}
 
 	log := models.ConsultationLog{
@@ -124,4 +151,30 @@ func GetFeedbackItems(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": items})
+}
+
+func CreateLecturer(c *gin.Context) {
+	var lecturer models.Lecturer
+	if err := c.ShouldBindJSON(&lecturer); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := koneksi.DB.Create(&lecturer).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "Data Dosen berhasil ditambahkan", "data": lecturer})
+}
+
+func CreateStudent(c *gin.Context) {
+	var student models.Student
+	if err := c.ShouldBindJSON(&student); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := koneksi.DB.Create(&student).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "Data Mahasiswa berhasil ditambahkan", "data": student})
 }
