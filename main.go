@@ -44,7 +44,9 @@ func main() {
 	r.GET("/users", controller.GetUsers)
 	r.POST("/users", controller.CreateUser)
 	r.GET("/lecturers", controller.GetLecturers)
+	r.POST("/lecturers", controller.CreateLecturer)
 	r.GET("/students", controller.GetStudents)
+	r.POST("/students", controller.CreateStudent)
 
 	api := r.Group("/api")
 	{
