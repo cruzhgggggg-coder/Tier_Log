@@ -12,10 +12,11 @@ import (
 )
 
 func init() {
+	// Ensure storage directories exist
 	folders := []string{
 		"storage/audio",
 		"storage/transcript",
-		"storage/feedback",
+		"storage/paper",
 	}
 
 	for _, folder := range folders {
@@ -27,20 +28,25 @@ func init() {
 }
 
 func main() {
+	// Initialize Database
 	koneksi.ConnectDatabase()
-	gin.SetMode(gin.ReleaseMode)
+
 	r := gin.Default()
 	r.SetTrustedProxies(nil)
 
+	// Static file serving for external storage
 	r.Static("/storage", "./storage")
 
+	// Base Route
 	r.GET("/", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{
-			"message": "TierLog API v1.0",
-			"status":  "ready",
+			"message": "TierLog API (Refactored)",
+			"version": "1.1",
+			"status":  "running",
 		})
 	})
 
+	// User Management (from tier_controller)
 	r.GET("/users", controller.GetUsers)
 	r.POST("/users", controller.CreateUser)
 	r.GET("/lecturers", controller.GetLecturers)
@@ -48,14 +54,20 @@ func main() {
 	r.GET("/students", controller.GetStudents)
 	r.POST("/students", controller.CreateStudent)
 
+	// API Group
 	api := r.Group("/api")
 	{
-		api.GET("/consultation", controller.GetConsultationLogs)
-		api.POST("/consultation", controller.CreateConsultationLog)
+		// Consultation Endpoints
+		api.POST("/consultation", controller.CreateConsultation)
+		api.GET("/consultation", controller.GetConsultations)
+
+		// Feedback Endpoints
+		api.PATCH("/feedback/:id/verify", controller.VerifyFeedback)
+
+		// AI Endpoints
+		api.POST("/ai/assist", controller.AIAssistHandler)
 	}
 
-	r.GET("/feedbacks", controller.GetFeedbackItems)
-
-	fmt.Println("Server is running at http://localhost:8080")
+	fmt.Println("TierLog Backend is running at http://localhost:8080")
 	r.Run(":8080")
 }

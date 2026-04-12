@@ -14,8 +14,15 @@ const (
 type FeedbackCategory string
 
 const (
-	CategoryMinor FeedbackCategory = "Minor"
-	CategoryMajor FeedbackCategory = "Major"
+	CategoryHOC FeedbackCategory = "HOC"
+	CategoryLOC FeedbackCategory = "LOC"
+)
+
+type FeedbackSource string
+
+const (
+	SourceAIScan FeedbackSource = "AI_SCAN"
+	SourceVoice  FeedbackSource = "VOICE"
 )
 
 type FeedbackStatus string
@@ -28,7 +35,7 @@ const (
 type User struct {
 	ID        uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
 	Email     string    `gorm:"unique;not null;type:varchar(255)" json:"email"`
-	Password  string    `gorm:"not null;type:varchar(255)" json:"password"`
+	Password  string    `gorm:"not null;type:varchar(255)" json:"-"`
 	Role      UserRole  `gorm:"type:enum('student','lecturer');not null" json:"role"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
@@ -60,16 +67,20 @@ type ConsultationLog struct {
 	UserID             uint64         `gorm:"not null" json:"user_id"`
 	AudioFilename      string         `gorm:"type:varchar(255)" json:"audio_filename"`
 	TranscriptFilename string         `gorm:"type:varchar(255)" json:"transcript_filename"`
+	DraftFilename      string         `gorm:"type:varchar(255)" json:"draft_filename"`
+	VersionNumber      int            `gorm:"not null" json:"version_number"`
 	CreatedAt          time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	User               User           `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
 	FeedbackItems      []FeedbackItem `gorm:"foreignKey:LogID;constraint:OnDelete:CASCADE" json:"feedback_items"`
 }
 
 type FeedbackItem struct {
-	ID        uint64           `gorm:"primaryKey;autoIncrement" json:"id"`
-	LogID     uint64           `gorm:"not null" json:"log_id"`
-	Content   string           `gorm:"type:text;not null" json:"content"`
-	Category  FeedbackCategory `gorm:"type:enum('Minor','Major');not null" json:"category"`
-	Status    FeedbackStatus   `gorm:"type:enum('Fixed','Pending');not null;default:'Pending'" json:"status"`
-	CreatedAt time.Time        `gorm:"autoCreateTime" json:"created_at"`
+	ID         uint64           `gorm:"primaryKey;autoIncrement" json:"id"`
+	LogID      uint64           `gorm:"not null" json:"log_id"`
+	Content    string           `gorm:"type:text;not null" json:"content"`
+	Category   FeedbackCategory `gorm:"type:enum('HOC','LOC');not null" json:"category"`
+	Source     FeedbackSource   `gorm:"type:enum('AI_SCAN','VOICE');not null" json:"source"`
+	Status     FeedbackStatus   `gorm:"type:enum('Fixed','Pending');not null;default:'Pending'" json:"status"`
+	IsVerified bool             `gorm:"not null;default:false" json:"is_verified"`
+	CreatedAt  time.Time        `gorm:"autoCreateTime" json:"created_at"`
 }
