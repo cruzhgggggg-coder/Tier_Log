@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
 	"testing_go/controller"
@@ -12,11 +11,10 @@ import (
 )
 
 func init() {
-	// Ensure storage directories exist
+	// Ensure external storage directories exist as per instructions
 	folders := []string{
 		"storage/audio",
 		"storage/transcript",
-		"storage/paper",
 	}
 
 	for _, folder := range folders {
@@ -28,25 +26,27 @@ func init() {
 }
 
 func main() {
-	// Initialize Database
+	// Initialize Database (GORM with MySQL)
 	koneksi.ConnectDatabase()
 
 	r := gin.Default()
 	r.SetTrustedProxies(nil)
 
-	// Static file serving for external storage
+	// Serving the external storage files
 	r.Static("/storage", "./storage")
 
-	// Base Route
-	r.GET("/", func(ctx *gin.Context) {
-		ctx.JSON(http.StatusOK, gin.H{
-			"message": "TierLog API (Refactored)",
-			"version": "1.1",
-			"status":  "running",
-		})
-	})
+	// API Endpoints as per strictly defined requirements
+	api := r.Group("/api")
+	{
+		// Consultation API
+		api.POST("/consultation", controller.CreateConsultation)
+		api.GET("/consultation", controller.GetConsultations)
 
-	// User Management (from tier_controller)
+		// AI Support Assistant API
+		api.POST("/ai/assist", controller.AIAssistHandler)
+	}
+
+	// Identity Management (Identity tables)
 	r.GET("/users", controller.GetUsers)
 	r.POST("/users", controller.CreateUser)
 	r.GET("/lecturers", controller.GetLecturers)
@@ -54,20 +54,6 @@ func main() {
 	r.GET("/students", controller.GetStudents)
 	r.POST("/students", controller.CreateStudent)
 
-	// API Group
-	api := r.Group("/api")
-	{
-		// Consultation Endpoints
-		api.POST("/consultation", controller.CreateConsultation)
-		api.GET("/consultation", controller.GetConsultations)
-
-		// Feedback Endpoints
-		api.PATCH("/feedback/:id/verify", controller.VerifyFeedback)
-
-		// AI Endpoints
-		api.POST("/ai/assist", controller.AIAssistHandler)
-	}
-
-	fmt.Println("TierLog Backend is running at http://localhost:8080")
+	fmt.Println("TierLog Refactored Backend is running at http://localhost:8080")
 	r.Run(":8080")
 }

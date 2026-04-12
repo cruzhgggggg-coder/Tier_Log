@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -22,52 +23,36 @@ func CreateConsultation(c *gin.Context) {
 		return
 	}
 
-	versionStr := c.DefaultPostForm("version_number", "1")
-	version, _ := strconv.Atoi(versionStr)
-
-	audioFile, _ := c.FormFile("audio")
-	transcriptFile, _ := c.FormFile("transcript")
-	paperFile, _ := c.FormFile("paper")
+	audioFile, err := c.FormFile("audio")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Audio file is required"})
+		return
+	}
 
 	timestamp := time.Now().UnixNano()
-	var audioFilename, transcriptFilename, draftFilename string
-
-	// Handle Audio
-	if audioFile != nil {
-		audioFilename = fmt.Sprintf("%d_%s", timestamp, audioFile.Filename)
-		audioPath := filepath.Join("storage", "audio", audioFilename)
-		if err := c.SaveUploadedFile(audioFile, audioPath); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save audio"})
-			return
-		}
+	
+	// Save .mp3 directly to storage/audio/
+	audioFilename := fmt.Sprintf("%d_%s", timestamp, audioFile.Filename)
+	audioPath := filepath.Join("storage", "audio", audioFilename)
+	if err := c.SaveUploadedFile(audioFile, audioPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save audio file"})
+		return
 	}
 
-	// Handle Transcript
-	if transcriptFile != nil {
-		transcriptFilename = fmt.Sprintf("%d_%s", timestamp, transcriptFile.Filename)
-		transcriptPath := filepath.Join("storage", "transcript", transcriptFilename)
-		if err := c.SaveUploadedFile(transcriptFile, transcriptPath); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transcript"})
-			return
-		}
+	// Create a .txt file in storage/transcript/ as a placeholder
+	transcriptFilename := fmt.Sprintf("%d_transcript.txt", timestamp)
+	transcriptPath := filepath.Join("storage", "transcript", transcriptFilename)
+	placeholderContent := []byte(fmt.Sprintf("Transcript placeholder for audio: %s\nGenerated at: %s", audioFilename, time.Now().Format(time.RFC3339)))
+	if err := os.WriteFile(transcriptPath, placeholderContent, 0644); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transcript placeholder"})
+		return
 	}
 
-	// Handle Paper (Drafts)
-	if paperFile != nil {
-		draftFilename = fmt.Sprintf("%d_%s", timestamp, paperFile.Filename)
-		paperPath := filepath.Join("storage", "paper", draftFilename)
-		if err := c.SaveUploadedFile(paperFile, paperPath); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save paper"})
-			return
-		}
-	}
-
+	// Save metadata to consultation_logs
 	log := models.ConsultationLog{
 		UserID:             userID,
 		AudioFilename:      audioFilename,
 		TranscriptFilename: transcriptFilename,
-		DraftFilename:      draftFilename,
-		VersionNumber:      version,
 	}
 
 	if err := koneksi.DB.Create(&log).Error; err != nil {
@@ -75,25 +60,19 @@ func CreateConsultation(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Consultation log created successfully", "data": log})
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Consultation log created successfully",
+		"data":    log,
+	})
 }
 
 // GET /api/consultation
 func GetConsultations(c *gin.Context) {
 	var logs []models.ConsultationLog
+	// Fetch logs using GORM's .Preload("FeedbackItems")
 	if err := koneksi.DB.Preload("FeedbackItems").Find(&logs).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": logs})
-}
-
-// PATCH /api/feedback/:id/verify
-func VerifyFeedback(c *gin.Context) {
-	id := c.Param("id")
-	if err := koneksi.DB.Model(&models.FeedbackItem{}).Where("id = ?", id).Update("is_verified", true).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify feedback"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Feedback verified successfully"})
 }
