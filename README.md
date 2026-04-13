@@ -1,259 +1,184 @@
-# TierLog — Backend API
+# 🛡️ TierLog — Intelligent Thesis Supervision System
 
-> AI-Enhanced E-Logbook for Thesis Supervision | Built with Go, Gin, GORM & MySQL
+> **AI-Powered E-Logbook & Revision Assistant**
+>
+> Built with high-performance Go (Gin), GORM, and Google Gemini.
+> A secure, guided bridge between lecturer feedback and student execution.
 
 ---
 
 ## 📋 Table of Contents
-- [Project Description](#project-description)
-- [Folder Structure](#folder-structure)
-- [Database Schema](#database-schema)
-- [API Documentation](#api-documentation)
-  - [POST /api/consultation](#post-apiconsultation)
-  - [GET /api/consultation](#get-apiconsultation)
-  - [POST /api/ai/assist](#post-apiaiassist)
-- [Testing with Postman](#testing-with-postman)
-- [Running the Server](#running-the-server)
+- [✨ Core Features](#-core-features)
+- [🏗️ System Architecture](#-system-architecture)
+- [📂 Folder Structure](#-folder-structure)
+- [🗄️ Database Schema](#-database-schema)
+- [📡 API Reference](#-api-reference)
+  - [Consultation Management](#consultation-management)
+  - [Identity Management](#identity-management)
+  - [AI Assistance](#ai-assistance)
+- [🧪 Testing with Postman (Step-by-Step)](#-testing-with-postman-step-by-step)
+- [🚀 Quick Start](#-quick-start)
 
 ---
 
-## 📌 Project Description
+## ✨ Core Features
 
-TierLog is a backend API system for managing thesis supervision sessions between students and lecturers. It implements:
-- **Audio Logbook**: Students upload consultation recordings (`.mp3`).
-- **External File Storage**: Audio and transcript files are stored on disk, not in the database.
-- **AI-Guarded Assistance**: An AI assistant that is strictly bound to only help students within the scope of verified lecturer feedback.
-- **Minor/Major Feedback Classification**: Feedback items are tagged as `Minor` or `Major`, and tracked as `Pending` or `Fixed`.
+- **Multi-Format Logbook**: Upload consultation recordings (`.mp3`) and thesis drafts (`.docx`, `.pdf`) in one session.
+- **External File Storage**: High-speed disk-based storage for large files (Audio, Papers, Transcripts) with metadata separation.
+- **AI-Guarded Assistant**: A custom-tuned Gemini assistant that *refuses* independent suggestions. It only acts upon official lecturer feedback injected from the database.
+- **Feedback Lifecycle**: Track supervision points categorized by severity (`Major`/`Minor`) and status (`Pending`/`Fixed`).
+- **SPA Integration**: Integrated React frontend serving directly from the Go binary.
 
 ---
 
-## 📁 Folder Structure
+## 🏗️ System Architecture
+
+```mermaid
+graph TD
+    A[Frontend: React] -->|REST API| B[Backend: Gin Gonic]
+    B -->|GORM| C[(MySQL DB)]
+    B -->|Save| D[storage/audio]
+    B -->|Save| E[storage/paper]
+    B -->|Generate| F[storage/transcript]
+    B -->|Inject Context| G[Google Gemini AI]
+    C -->|Feedback Items| G
+    G -->|Guarded Response| B
+```
+
+---
+
+## 📂 Folder Structure
 
 ```
 Tier_Log/
-│
-├── controller/
-│   ├── ai_controller.go          # Guarded AI assistance logic
-│   ├── consultation_controller.go # POST/GET consultation endpoints
-│   └── user_controller.go        # User, Lecturer, Student CRUD
-│
-├── koneksi/
-│   └── koneksi.go                # MySQL database connection (GORM)
-│
-├── models/
-│   └── models.go                 # GORM struct definitions
-│
-├── storage/                      # External file storage (NOT in DB)
-│   ├── audio/                    # Uploaded .mp3 consultation recordings
-│   └── transcript/               # Auto-generated .txt transcript placeholders
-│
-├── go.mod
-├── go.sum
-├── main.go                       # Entry point, route registration
-└── README.md
+├── controller/        # Business logic handlers
+│   ├── ai_controller.go           # Gemini AI Integration & Guardrails
+│   ├── consultation_controller.go # File upload & log management
+│   └── user_controller.go         # Identity & User CRUD
+├── models/            # Database entity definitions
+│   └── models.go                  # GORM Structs & JSON mappings
+├── storage/           # Physical file storage (Excluded from Git)
+│   ├── audio/                     # .mp3 Consultation recordings
+│   ├── paper/                     # .docx/.pdf Thesis drafts
+│   └── transcript/                # .txt Placeholder transcripts
+├── dist/              # Compiled Frontend (SPA)
+├── main.go            # Entry point & Route registration
+└── struct_go.sql      # Database initialization script
 ```
-
-> ⚠️ **Critical Design Rule**: The `storage/` directory holds physical files. The database only stores the **filename** (e.g., `1712900000_audio.mp3`), never the file content.
 
 ---
 
 ## 🗄️ Database Schema
 
-| Table               | Key Fields                                                                                         |
-|---------------------|----------------------------------------------------------------------------------------------------|
-| `users`             | `id`, `email`, `password (hidden)`, `role ENUM('student','lecturer')`, timestamps                 |
-| `lecturers`         | `id`, `user_id (FK)`, `nip`, `name`, `faculty`                                                    |
-| `students`          | `id`, `user_id (FK)`, `lecturer_id (FK)`, `nim`, `name`, `prodi`, `thesis_title`                  |
-| `consultation_logs` | `id`, `user_id (FK)`, `audio_filename`, `transcript_filename`, `created_at`                        |
-| `feedback_items`    | `id`, `log_id (FK)`, `content`, `category ENUM('Minor','Major')`, `status ENUM('Fixed','Pending')`, `created_at` |
-
-**Relationship**: `consultation_logs` → `feedback_items` is a **One-to-Many** relationship (`log_id` is the foreign key).
+| Table | Description |
+| :--- | :--- |
+| **`users`** | Authentication & RBAC (`student` or `lecturer`). |
+| **`lecturers`** | Extended profile for faculty members. |
+| **`students`** | Profile including thesis title and supervisor link. |
+| **`consultation_logs`** | Core session links for audio, paper, and transcript files. |
+| **`feedback_items`** | Atomic feedback points (Major/Minor) linked to a log. |
 
 ---
 
-## 📡 API Documentation
+## 📡 API Reference
 
-### Base URL
-```
-http://localhost:8080
-```
+### Consultation Management
+
+#### **POST** `/api/consultation`
+Upload a new consultation session.
+- **Body**: `multipart/form-data`
+- **Fields**:
+  - `user_id`: (Integer) Student ID
+  - `audio`: (File) Recording (.mp3)
+  - `paper`: (File, Optional) Thesis draft (.docx, etc.)
+
+#### **GET** `/api/consultation`
+Retrieve all consultation logs with nested feedback items.
 
 ---
 
-### POST /api/consultation
+### Identity Management
 
-**Description**: Upload a consultation audio file. The server saves the `.mp3` to disk and creates a `.txt` transcript placeholder. Metadata (filenames only) is saved to the database.
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| **POST** | `/users` | Register a new system user. |
+| **POST** | `/lecturers` | Create a lecturer profile. |
+| **POST** | `/students` | Create a student profile & link to supervisor. |
+| **GET** | `/students` | List all students with lecturer preloading. |
 
-| Property        | Value                          |
-|-----------------|-------------------------------|
-| **URL**         | `/api/consultation`           |
-| **Method**      | `POST`                        |
-| **Body Type**   | `multipart/form-data`         |
+---
 
-**Request Parameters (form-data):**
+### AI Assistance
 
-| Key       | Type   | Required | Description                          |
-|-----------|--------|----------|--------------------------------------|
-| `user_id` | text   | ✅ Yes   | The ID of the student uploading      |
-| `audio`   | file   | ✅ Yes   | The `.mp3` consultation recording    |
-
-**Success Response (201 Created):**
-```json
-{
-  "message": "Consultation log created successfully",
-  "data": {
-    "id": 1,
-    "user_id": 3,
-    "audio_filename": "1712900000_recording.mp3",
-    "transcript_filename": "1712900000_transcript.txt",
-    "created_at": "2026-04-12T05:30:00Z",
-    "user": {},
-    "feedback_items": null
+#### **POST** `/api/ai/assist`
+Interact with the Guarded AI Assistant.
+- **Body**: `application/json`
+- **Parameters**:
+  ```json
+  {
+    "log_id": 1,
+    "query": "How do I fix the methodology based on the feedback?"
   }
-}
-```
-
-**Error Responses:**
-
-| Status | Reason                          |
-|--------|---------------------------------|
-| `400`  | Missing `user_id` or audio file |
-| `500`  | Failed to save file or DB error |
+  ```
+- **Constraint**: Returns **403 Forbidden** if no lecturer feedback has been recorded for the log.
 
 ---
 
-### GET /api/consultation
+## 🧪 Testing with Postman (Step-by-Step)
 
-**Description**: Fetch all consultation logs. Uses GORM `.Preload("FeedbackItems")` to return each log together with all its associated Minor/Major feedback in a single response.
+### 1. Register a Lecturer
+- **Method**: `POST`
+- **URL**: `http://localhost:8080/users`
+- **Body (JSON)**:
+  ```json
+  { "email": "lecturer@uni.ac.id", "password": "password123", "role": "lecturer" }
+  ```
 
-| Property      | Value                 |
-|---------------|-----------------------|
-| **URL**       | `/api/consultation`   |
-| **Method**    | `GET`                 |
-| **Body Type** | None                  |
+### 2. Create Consultation (Upload MP3 & Docx)
+- **Method**: `POST`
+- **URL**: `http://localhost:8080/api/consultation`
+- **Body**: `form-data`
+- **Keys**:
+  - `user_id`: `2`
+  - `audio`: [Select MP3 File]
+  - `paper`: [Select DOCX File]
+- **Verification**: Check `storage/audio` and `storage/paper` folders.
 
-**Success Response (200 OK):**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "user_id": 3,
-      "audio_filename": "1712900000_recording.mp3",
-      "transcript_filename": "1712900000_transcript.txt",
-      "created_at": "2026-04-12T05:30:00Z",
-      "feedback_items": [
-        {
-          "id": 1,
-          "log_id": 1,
-          "content": "Perbaiki struktur bab 2, latar belakang masalah terlalu dangkal.",
-          "category": "Major",
-          "status": "Pending",
-          "created_at": "2026-04-12T05:35:00Z"
-        },
-        {
-          "id": 2,
-          "log_id": 1,
-          "content": "Perbaiki penulisan daftar pustaka sesuai format APA.",
-          "category": "Minor",
-          "status": "Fixed",
-          "created_at": "2026-04-12T05:36:00Z"
-        }
-      ]
-    }
-  ]
-}
-```
+### 3. Ask AI (Revision Assistance)
+- **Method**: `POST`
+- **URL**: `http://localhost:8080/api/ai/assist`
+- **Body (JSON)**:
+  ```json
+  { "log_id": 1, "query": "What are my next steps?" }
+  ```
+- **Expected Outcome**: Detailed response if feedback exists, or `guarded` message if empty.
 
 ---
 
-### POST /api/ai/assist
+## 🚀 Quick Start
 
-**Description**: Ask the AI assistant a question. The AI is strictly bound to the verified feedback for the given log — it will **refuse** to answer questions outside of that scope.
+1. **Clone & Install Dependencies**
+   ```bash
+   git clone <repository_url>
+   cd Tier_Log
+   go mod tidy
+   ```
 
-| Property      | Value                 |
-|---------------|-----------------------|
-| **URL**       | `/api/ai/assist`      |
-| **Method**    | `POST`                |
-| **Body Type** | `application/json`    |
+2. **Configure Database**
+   - Import `struct_go.sql` into your MySQL server.
+   - Update `koneksi/koneksi.go` credentials if needed.
 
-**Request Body (JSON):**
-```json
-{
-  "log_id": 1,
-  "query": "Bagaimana cara memperbaiki latar belakang masalah di bab 2?"
-}
-```
+3. **Set Environment Variables**
+   ```bash
+   export GEMINI_API_KEY="your_api_key_here"
+   ```
 
-**Success Response (200 OK):**
-```json
-{
-  "status": "success",
-  "ai_response": "[SYSTEM PROMPT]\nPeran Utama: ...\n\n[STUDENT QUERY]\nBagaimana cara memperbaiki..."
-}
-```
+4. **Run**
+   ```bash
+   go run main.go
+   ```
+   *The system handles folder creation and DB migration automatically.*
 
 ---
 
-## 🧪 Testing with Postman
-
-### How to Test `POST /api/consultation`
-
-**Step 1**: Open Postman and create a new request.
-
-**Step 2**: Set the method to **POST** and enter the URL:
-```
-http://localhost:8080/api/consultation
-```
-
-**Step 3**: Go to the **Body** tab and select **form-data**.
-
-**Step 4**: Add the following keys:
-
-| Key       | Type | Value                          |
-|-----------|------|-------------------------------|
-| `user_id` | Text | `1`                           |
-| `audio`   | File | *(Select your .mp3 file)*    |
-
-**Step 5**: Click **Send**.
-
-**Step 6**: You should receive a `201 Created` response with the log metadata.
-
-> 📸 **[INSERT SCREENSHOT HERE]** — Add a screenshot of the Postman request and the successful JSON response.
-
----
-
-### How to Test `GET /api/consultation`
-
-**Step 1**: Create a new request in Postman.
-
-**Step 2**: Set the method to **GET** and enter the URL:
-```
-http://localhost:8080/api/consultation
-```
-
-**Step 3**: Click **Send**.
-
-**Step 4**: You should receive a `200 OK` response containing all logs with their nested feedback items.
-
-> 📸 **[INSERT SCREENSHOT HERE]** — Add a screenshot of the Postman GET response.
-
----
-
-## 🚀 Running the Server
-
-**Prerequisites:**
-- Go 1.21+
-- MySQL running locally (default: `root` / no password / database: `struct_go`)
-
-**Start the server:**
-```bash
-go run .
-```
-
-The server will start at:
-```
-http://localhost:8080
-```
-
-**Storage directories** (`storage/audio` and `storage/transcript`) will be created automatically on first run.
+*TierLog — Bridging the gap between feedback and excellence.*
