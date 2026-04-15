@@ -126,32 +126,52 @@ Interact with the Guarded AI Assistant.
 
 ## 🧪 Testing with Postman (Step-by-Step)
 
-### 1. Register a Lecturer
-- **Method**: `POST`
-- **URL**: `http://localhost:8080/users`
-- **Body (JSON)**:
+To test the **AI-Guarded Persona Workflow**, follow ini set-up urutan di Postman:
+
+### 1. Account Setup (Lakukan secara berurutan)
+- **Buat Akun User**: `POST http://localhost:8080/users`
   ```json
-  { "email": "lecturer@uni.ac.id", "password": "password123", "role": "lecturer" }
+  { "email": "mhs1@uni.ac.id", "password": "password123", "role": "student" }
+  ```
+- **Buat Profil Dosen**: `POST http://localhost:8080/lecturers`
+  ```json
+  { "user_id": 1, "nip": "199001", "name": "Dr. Arsitek", "faculty": "Teknik Informatika" }
+  ```
+- **Buat Profil Mahasiswa**: `POST http://localhost:8080/students`
+  ```json
+  { "user_id": 2, "lecturer_id": 1, "nim": "22001", "name": "Budi", "prodi": "Informatika", "thesis_title": "Implementasi AI" }
   ```
 
-### 2. Create Consultation (Upload MP3 & Docx)
+### 2. Alur AI-Guarded Persona (Fitur Utama)
 - **Method**: `POST`
 - **URL**: `http://localhost:8080/api/consultation`
 - **Body**: `form-data`
 - **Keys**:
-  - `user_id`: `2`
-  - `audio`: [Select MP3 File]
-  - `paper`: [Select DOCX File]
-- **Verification**: Check `storage/audio` and `storage/paper` folders.
+  - `user_id`: `2` (Gunakan ID mahasiswa yang baru dibuat)
+  - `audio`: [Upload file .mp3]
+  - `paper`: [Upload file .docx] (**WAJIB** untuk analisis AI)
+- **Cara Kerja**:
+  - Sistem akan menyimpan file, membaca isi dokumen `.docx`, dan mengirimkannya ke **Gemini API**.
+  - Gemini akan menganalisis dokumen tersebut terhadap transkrip bimbingan (simulasi) dan secara otomatis memasukkan poin-poin revisi ke tabel `feedback_items`.
 
-### 3. Ask AI (Revision Assistance)
+### 3. Verifikasi Hasil Analisis AI
+- **Method**: `GET`
+- **URL**: `http://localhost:8080/api/consultation`
+- **Output**: Periksa field `feedback_items`. Anda akan melihat daftar tugas revisi yang dikategorikan sebagai **Major (HOC)** atau **Minor (LOC)** yang dibuat otomatis oleh AI.
+
+### 4. Interactive AI Assistance
 - **Method**: `POST`
 - **URL**: `http://localhost:8080/api/ai/assist`
 - **Body (JSON)**:
   ```json
-  { "log_id": 1, "query": "What are my next steps?" }
+  { 
+    "log_id": 1, 
+    "query": "Bagaimana cara saya memperbaiki metodologi sesuai arahan dosen tadi?" 
+  }
   ```
-- **Expected Outcome**: Detailed response if feedback exists, or `guarded` message if empty.
+- **Prinsip Guarded**:
+  - AI akan membalas dengan **Persona Dosen**.
+  - Jika `log_id` tersebut tidak memiliki feedback (misal proses analisis gagal atau draf tidak diupload), AI akan membalas dengan **403 Forbidden** sesuai aturan keamanan akademik.
 
 ---
 

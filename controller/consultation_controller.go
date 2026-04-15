@@ -10,6 +10,7 @@ import (
 
 	"testing_go/koneksi"
 	"testing_go/models"
+	"testing_go/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -39,33 +40,53 @@ func CreateConsultation(c *gin.Context) {
 		return
 	}
 
-	// Handle optional paper upload (.docx, .pdf, etc.)
-	paperFilename := ""
+	// Handle paper upload (.docx)
 	paperFile, err := c.FormFile("paper")
-	if err == nil {
-		paperFilename = fmt.Sprintf("%d_%s", timestamp, paperFile.Filename)
-		paperPath := filepath.Join("storage", "paper", paperFilename)
-		if err := c.SaveUploadedFile(paperFile, paperPath); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save paper file"})
-			return
-		}
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Paper file (.docx) is required"})
+		return
 	}
-
-	// Create a .txt file in storage/transcript/ as a placeholder
-	transcriptFilename := fmt.Sprintf("%d_transcript.txt", timestamp)
-	transcriptPath := filepath.Join("storage", "transcript", transcriptFilename)
-	placeholderContent := []byte(fmt.Sprintf("Transcript placeholder for audio: %s\nGenerated at: %s", audioFilename, time.Now().Format(time.RFC3339)))
-	if err := os.WriteFile(transcriptPath, placeholderContent, 0644); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transcript placeholder"})
+	paperFilename := fmt.Sprintf("%d_%s", timestamp, paperFile.Filename)
+	paperPath := filepath.Join("storage", "paper", paperFilename)
+	if err := c.SaveUploadedFile(paperFile, paperPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save paper file"})
 		return
 	}
 
-	// Save metadata to consultation_logs
+	// Create a .txt file in storage/transcript/ (Simulating Transcription)
+	transcriptFilename := fmt.Sprintf("%d_transcript.txt", timestamp)
+	transcriptPath := filepath.Join("storage", "transcript", transcriptFilename)
+	// Example transcript content - in a real app, this would come from a Speech-to-Text service
+	transcriptContent := "Dosen: Judulnya sudah oke, tapi metodologinya kurang jelas. Tolong jelaskan lebih detail di Bab 3. Juga ada beberapa typo di daftar pustaka."
+	if err := os.WriteFile(transcriptPath, []byte(transcriptContent), 0644); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transcript file"})
+		return
+	}
+
+	// AI-GUARDED PERSONA WORKFLOW START
+	
+	// 1. Read Docx text
+	paperText, err := utils.ReadDocxText(paperPath)
+	if err != nil {
+		// Log error but proceed or fail? Given it's a core requirement, we fail with 500.
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to extract text from docx: " + err.Error()})
+		return
+	}
+
+	// 2. Process with Gemini via controller logic
+	feedbackItems, err := ProcessRevisionAssistance(transcriptContent, paperText)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI Processing failed: " + err.Error()})
+		return
+	}
+
+	// 3. Save Log and Feedback Items
 	log := models.ConsultationLog{
 		UserID:             userID,
 		AudioFilename:      audioFilename,
 		TranscriptFilename: transcriptFilename,
 		PaperFilename:      paperFilename,
+		FeedbackItems:      feedbackItems,
 	}
 
 	if err := koneksi.DB.Create(&log).Error; err != nil {
@@ -74,7 +95,7 @@ func CreateConsultation(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message": "Consultation log created successfully",
+		"message": "Consultation log and AI feedback created successfully",
 		"data":    log,
 	})
 }
@@ -82,7 +103,6 @@ func CreateConsultation(c *gin.Context) {
 // GET /api/consultation
 func GetConsultations(c *gin.Context) {
 	var logs []models.ConsultationLog
-	// Fetch logs using GORM's .Preload("FeedbackItems")
 	if err := koneksi.DB.Preload("FeedbackItems").Find(&logs).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
 		return
