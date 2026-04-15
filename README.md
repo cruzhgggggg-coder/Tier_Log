@@ -13,19 +13,20 @@
 - [📂 Folder Structure](#-folder-structure)
 - [🗄️ Database Schema](#-database-schema)
 - [📡 API Reference](#-api-reference)
-  - [Consultation Management](#consultation-management)
-  - [Identity Management](#identity-management)
-  - [AI Assistance](#ai-assistance)
-- [🧪 Testing with Postman (Step-by-Step)](#-testing-with-postman-step-by-step)
+  - [1. Identity Management — Users](#1-identity-management--users)
+  - [2. Identity Management — Lecturers](#2-identity-management--lecturers)
+  - [3. Identity Management — Students](#3-identity-management--students)
+  - [4. Consultation Management](#4-consultation-management)
+  - [5. AI Assistance (Guarded)](#5-ai-assistance-guarded)
 - [🚀 Quick Start](#-quick-start)
 
 ---
 
 ## ✨ Core Features
 
-- **Multi-Format Logbook**: Upload consultation recordings (`.mp3`) and thesis drafts (`.docx`, `.pdf`) in one session.
-- **External File Storage**: High-speed disk-based storage for large files (Audio, Papers, Transcripts) with metadata separation.
-- **AI-Guarded Assistant**: A custom-tuned Gemini assistant that *refuses* independent suggestions. It only acts upon official lecturer feedback injected from the database.
+- **Multi-Format Logbook**: Upload consultation recordings (`.mp3`) and thesis drafts (`.docx`) in one session.
+- **External File Storage**: Disk-based storage for large files (Audio, Papers, Transcripts) with metadata saved to DB.
+- **AI-Guarded Assistant**: A custom-tuned Gemini assistant that *refuses* independent suggestions — only responds based on official lecturer feedback.
 - **Feedback Lifecycle**: Track supervision points categorized by severity (`Major`/`Minor`) and status (`Pending`/`Fixed`).
 - **SPA Integration**: Integrated React frontend serving directly from the Go binary.
 
@@ -41,7 +42,7 @@ graph TD
     B -->|Save| E[storage/paper]
     B -->|Generate| F[storage/transcript]
     B -->|Inject Context| G[Google Gemini AI]
-    C -->|Feedback Items| G
+    C -->|Feedback Items + TranscriptText| G
     G -->|Guarded Response| B
 ```
 
@@ -59,8 +60,9 @@ Tier_Log/
 │   └── models.go                  # GORM Structs & JSON mappings
 ├── storage/           # Physical file storage (Excluded from Git)
 │   ├── audio/                     # .mp3 Consultation recordings
-│   ├── paper/                     # .docx/.pdf Thesis drafts
+│   ├── paper/                     # .docx Thesis drafts
 │   └── transcript/                # .txt Placeholder transcripts
+├── screenshoot/       # API documentation screenshots
 ├── dist/              # Compiled Frontend (SPA)
 ├── main.go            # Entry point & Route registration
 └── struct_go.sql      # Database initialization script
@@ -72,106 +74,292 @@ Tier_Log/
 
 | Table | Description |
 | :--- | :--- |
-| **`users`** | Authentication & RBAC (`student` or `lecturer`). |
+| **`users`** | Authentication & RBAC (`student` or `lecturer`). Supports soft delete. |
 | **`lecturers`** | Extended profile for faculty members. |
-| **`students`** | Profile including thesis title and supervisor link. |
-| **`consultation_logs`** | Core session links for audio, paper, and transcript files. |
-| **`feedback_items`** | Atomic feedback points (Major/Minor) linked to a log. |
+| **`students`** | Profile including thesis title and supervisor link (`lecturer_id`). |
+| **`consultation_logs`** | Core session linked to `student_id`, stores file references and `transcript_text` for AI context. |
+| **`feedback_items`** | Atomic feedback points (Major/Minor) with lifecycle status (Pending/Fixed). |
 
 ---
 
 ## 📡 API Reference
 
-### Consultation Management
+### 1. Identity Management — Users
+
+#### **POST** `/users`
+Membuat akun pengguna baru (dosen atau mahasiswa).
+
+- **URL**: `http://localhost:8080/users`
+- **Method**: `POST`
+- **Content-Type**: `application/json`
+
+**Parameter Body (JSON)**:
+
+| Field | Type | Required | Description |
+|:---|:---|:---|:---|
+| `email` | `string` | ✅ Ya | Alamat email unik pengguna |
+| `password` | `string` | ✅ Ya | Password pengguna |
+| `role` | `string` | ✅ Ya | Peran pengguna: `student` atau `lecturer` |
+
+**Contoh Request**:
+```json
+{
+  "email": "mhs1@university.ac.id",
+  "password": "password123",
+  "role": "student"
+}
+```
+
+**Contoh Response** `201 Created`:
+```json
+{
+  "data": {
+    "id": 2,
+    "email": "mhs1@university.ac.id",
+    "role": "student",
+    "created_at": "2026-04-15T08:30:00Z",
+    "updated_at": "2026-04-15T08:30:00Z"
+  },
+  "message": "User baru berhasil dibuat"
+}
+```
+
+**Screenshot Postman**:
+
+![POST /users — Membuat User Baru](screenshoot/postman_create_user.png)
+
+---
+
+#### **GET** `/users`
+Mengambil semua data pengguna.
+
+- **URL**: `http://localhost:8080/users`
+- **Method**: `GET`
+- **Tidak memerlukan body**
+
+---
+
+### 2. Identity Management — Lecturers
+
+#### **POST** `/lecturers`
+Membuat profil dosen. **Wajib dilakukan setelah membuat User dengan `role: lecturer`**.
+
+- **URL**: `http://localhost:8080/lecturers`
+- **Method**: `POST`
+- **Content-Type**: `application/json`
+
+**Parameter Body (JSON)**:
+
+| Field | Type | Required | Description |
+|:---|:---|:---|:---|
+| `user_id` | `integer` | ✅ Ya | ID dari tabel `users` dengan role `lecturer` |
+| `nip` | `string` | ✅ Ya | NIP dosen (unik, maks. 20 karakter) |
+| `name` | `string` | ✅ Ya | Nama lengkap dosen |
+| `faculty` | `string` | ❌ Opsional | Nama fakultas |
+
+**Contoh Request**:
+```json
+{
+  "user_id": 1,
+  "nip": "198001012005011001",
+  "name": "Dr. Arsitek Go, M.Kom",
+  "faculty": "Informatika"
+}
+```
+
+**Contoh Response** `201 Created`:
+```json
+{
+  "data": {
+    "id": 1,
+    "user_id": 1,
+    "nip": "198001012005011001",
+    "name": "Dr. Arsitek Go, M.Kom",
+    "faculty": "Informatika"
+  },
+  "message": "Data Dosen berhasil ditambahkan"
+}
+```
+
+**Screenshot Postman**:
+
+![POST /lecturers — Membuat Profil Dosen](screenshoot/postman_create_lecturer.png)
+
+---
+
+#### **GET** `/lecturers`
+Mengambil semua data dosen beserta akun user terkait.
+
+- **URL**: `http://localhost:8080/lecturers`
+- **Method**: `GET`
+
+---
+
+### 3. Identity Management — Students
+
+#### **POST** `/students`
+Membuat profil mahasiswa dan menghubungkan ke dosen pembimbing.
+
+- **URL**: `http://localhost:8080/students`
+- **Method**: `POST`
+- **Content-Type**: `application/json`
+
+**Parameter Body (JSON)**:
+
+| Field | Type | Required | Description |
+|:---|:---|:---|:---|
+| `user_id` | `integer` | ✅ Ya | ID dari tabel `users` dengan role `student` |
+| `lecturer_id` | `integer` | ✅ Ya | ID dari tabel `lecturers` (Dosen Pembimbing) |
+| `nim` | `string` | ✅ Ya | NIM mahasiswa (unik, maks. 20 karakter) |
+| `name` | `string` | ✅ Ya | Nama lengkap mahasiswa |
+| `prodi` | `string` | ❌ Opsional | Program studi |
+| `thesis_title` | `string` | ❌ Opsional | Judul skripsi/tesis |
+
+**Contoh Request**:
+```json
+{
+  "user_id": 2,
+  "lecturer_id": 1,
+  "nim": "2200010001",
+  "name": "Budi Mahasiswa",
+  "prodi": "Teknik Informatika",
+  "thesis_title": "Implementasi Microservices pada Sistem Log Bimbingan"
+}
+```
+
+**Contoh Response** `201 Created`:
+```json
+{
+  "data": {
+    "id": 1,
+    "user_id": 2,
+    "lecturer_id": 1,
+    "nim": "2200010001",
+    "name": "Budi Mahasiswa",
+    "prodi": "Teknik Informatika",
+    "thesis_title": "Implementasi Microservices pada Sistem Log Bimbingan"
+  },
+  "message": "Data Mahasiswa berhasil ditambahkan"
+}
+```
+
+**Screenshot Postman**:
+
+![POST /students — Membuat Profil Mahasiswa](screenshoot/postman_create_student.png)
+
+---
+
+#### **GET** `/students`
+Mengambil semua data mahasiswa beserta dosen pembimbing dan akun user.
+
+- **URL**: `http://localhost:8080/students`
+- **Method**: `GET`
+
+---
+
+### 4. Consultation Management
 
 #### **POST** `/api/consultation`
-Upload a new consultation session.
-- **Body**: `multipart/form-data`
-- **Fields**:
-  - `user_id`: (Integer) Student ID
-  - `audio`: (File) Recording (.mp3)
-  - `paper`: (File, Optional) Thesis draft (.docx, etc.)
+Membuat sesi bimbingan baru. Endpoint ini akan otomatis:
+1. Menyimpan file audio & paper ke disk.
+2. Mengirim isi dokumen `.docx` ke **Gemini AI**.
+3. Mengekstrak poin-poin revisi dari transkrip dan menyimpannya sebagai `feedback_items`.
+
+- **URL**: `http://localhost:8080/api/consultation`
+- **Method**: `POST`
+- **Content-Type**: `multipart/form-data`
+
+**Parameter Form-Data**:
+
+| Field | Type | Required | Description |
+|:---|:---|:---|:---|
+| `user_id` | `text` | ✅ Ya | ID User mahasiswa yang sedang bimbingan |
+| `audio` | `file` | ✅ Ya | File rekaman bimbingan (`.mp3`) |
+| `paper` | `file` | ✅ Ya | Draft skripsi mahasiswa (`.docx`) — **digunakan sebagai konteks analisis AI** |
+
+**Contoh Response** `201 Created`:
+```json
+{
+  "message": "Consultation log and AI feedback created successfully",
+  "data": {
+    "id": 1,
+    "student_id": 1,
+    "audio_filename": "1776217800_recording.mp3",
+    "transcript_filename": "1776217800_transcript.txt",
+    "transcript_text": "Dosen: Judulnya sudah oke, tapi metodologinya kurang jelas...",
+    "paper_filename": "1776217800_thesis_draft.docx",
+    "feedback_items": [
+      { "id": 1, "log_id": 1, "content": "Perjelas metodologi di Bab 3", "category": "Major", "status": "Pending" },
+      { "id": 2, "log_id": 1, "content": "Perbaiki typo di daftar pustaka", "category": "Minor", "status": "Pending" }
+    ]
+  }
+}
+```
+
+**Screenshot Postman**:
+
+![POST /api/consultation — Upload Sesi Bimbingan](screenshoot/postman_create_consultation.png)
+
+---
 
 #### **GET** `/api/consultation`
-Retrieve all consultation logs with nested feedback items.
+Mengambil semua log bimbingan beserta feedback items dan profil mahasiswa.
+
+- **URL**: `http://localhost:8080/api/consultation`
+- **Method**: `GET`
+- **Tidak memerlukan body**
+
+**Screenshot Postman**:
+
+![GET /api/consultation — Daftar Log Bimbingan](screenshoot/postman_get_consultations.png)
 
 ---
 
-### Identity Management
-
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| **POST** | `/users` | Register a new system user. |
-| **POST** | `/lecturers` | Create a lecturer profile. |
-| **POST** | `/students` | Create a student profile & link to supervisor. |
-| **GET** | `/students` | List all students with lecturer preloading. |
-
----
-
-### AI Assistance
+### 5. AI Assistance (Guarded)
 
 #### **POST** `/api/ai/assist`
-Interact with the Guarded AI Assistant.
-- **Body**: `application/json`
-- **Parameters**:
-  ```json
-  {
-    "log_id": 1,
-    "query": "How do I fix the methodology based on the feedback?"
-  }
-  ```
-- **Constraint**: Returns **403 Forbidden** if no lecturer feedback has been recorded for the log.
+Berinteraksi dengan AI Assistant. AI **hanya akan merespons** berdasarkan feedback resmi dosen yang sudah tersimpan di database untuk log tersebut.
 
----
-
-## 🧪 Testing with Postman (Step-by-Step)
-
-To test the **AI-Guarded Persona Workflow**, follow ini set-up urutan di Postman:
-
-### 1. Account Setup (Lakukan secara berurutan)
-- **Buat Akun User**: `POST http://localhost:8080/users`
-  ```json
-  { "email": "mhs1@uni.ac.id", "password": "password123", "role": "student" }
-  ```
-- **Buat Profil Dosen**: `POST http://localhost:8080/lecturers`
-  ```json
-  { "user_id": 1, "nip": "199001", "name": "Dr. Arsitek", "faculty": "Teknik Informatika" }
-  ```
-- **Buat Profil Mahasiswa**: `POST http://localhost:8080/students`
-  ```json
-  { "user_id": 2, "lecturer_id": 1, "nim": "22001", "name": "Budi", "prodi": "Informatika", "thesis_title": "Implementasi AI" }
-  ```
-
-### 2. Alur AI-Guarded Persona (Fitur Utama)
-- **Method**: `POST`
-- **URL**: `http://localhost:8080/api/consultation`
-- **Body**: `form-data`
-- **Keys**:
-  - `user_id`: `2` (Gunakan ID mahasiswa yang baru dibuat)
-  - `audio`: [Upload file .mp3]
-  - `paper`: [Upload file .docx] (**WAJIB** untuk analisis AI)
-- **Cara Kerja**:
-  - Sistem akan menyimpan file, membaca isi dokumen `.docx`, dan mengirimkannya ke **Gemini API**.
-  - Gemini akan menganalisis dokumen tersebut terhadap transkrip bimbingan (simulasi) dan secara otomatis memasukkan poin-poin revisi ke tabel `feedback_items`.
-
-### 3. Verifikasi Hasil Analisis AI
-- **Method**: `GET`
-- **URL**: `http://localhost:8080/api/consultation`
-- **Output**: Periksa field `feedback_items`. Anda akan melihat daftar tugas revisi yang dikategorikan sebagai **Major (HOC)** atau **Minor (LOC)** yang dibuat otomatis oleh AI.
-
-### 4. Interactive AI Assistance
-- **Method**: `POST`
 - **URL**: `http://localhost:8080/api/ai/assist`
-- **Body (JSON)**:
-  ```json
-  { 
-    "log_id": 1, 
-    "query": "Bagaimana cara saya memperbaiki metodologi sesuai arahan dosen tadi?" 
-  }
-  ```
-- **Prinsip Guarded**:
-  - AI akan membalas dengan **Persona Dosen**.
-  - Jika `log_id` tersebut tidak memiliki feedback (misal proses analisis gagal atau draf tidak diupload), AI akan membalas dengan **403 Forbidden** sesuai aturan keamanan akademik.
+- **Method**: `POST`
+- **Content-Type**: `application/json`
+
+**Parameter Body (JSON)**:
+
+| Field | Type | Required | Description |
+|:---|:---|:---|:---|
+| `log_id` | `integer` | ✅ Ya | ID dari `consultation_logs` yang memiliki feedback |
+| `query` | `string` | ✅ Ya | Pertanyaan mahasiswa terkait revisi |
+
+**Contoh Request**:
+```json
+{
+  "log_id": 1,
+  "query": "Bagaimana cara saya memperbaiki metodologi sesuai arahan dosen?"
+}
+```
+
+**Contoh Response** `200 OK`:
+```json
+{
+  "status": "success",
+  "ai_response": "Berdasarkan feedback dosen pembimbing Anda, berikut panduan konkret memperbaiki Bab 3:\n\n1. **Perjelas Desain Penelitian**: Tambahkan sub-bab yang menjelaskan pendekatan penelitian secara eksplisit...\n2. **Tambahkan Diagram Alur**: Buat flowchart yang menggambarkan proses pengumpulan dan analisis data."
+}
+```
+
+**Kasus Guarded — `403 Forbidden`** (jika `log_id` tidak memiliki feedback):
+```json
+{
+  "status": "guarded",
+  "message": "GUARDED: Belum ada feedback resmi. Selesaikan proses bimbingan terlebih dahulu."
+}
+```
+
+**Screenshot Postman — Respons 403 Guarded**:
+
+![POST /api/ai/assist — 403 Guarded Response](screenshoot/postman_ai_guarded.png)
+
+> **Catatan**: Screenshot respons sukses (200) dapat diuji setelah tahap konsultasi berhasil dilakukan.
 
 ---
 
@@ -179,17 +367,21 @@ To test the **AI-Guarded Persona Workflow**, follow ini set-up urutan di Postman
 
 1. **Clone & Install Dependencies**
    ```bash
-   git clone <repository_url>
+   git clone https://github.com/cruzhgggggg-coder/Tier_Log.git
    cd Tier_Log
    go mod tidy
    ```
 
 2. **Configure Database**
-   - Import `struct_go.sql` into your MySQL server.
-   - Update `koneksi/koneksi.go` credentials if needed.
+   - Import `struct_go.sql` ke MySQL Anda.
+   - Update kredensial di `koneksi/koneksi.go` jika perlu.
 
 3. **Set Environment Variables**
    ```bash
+   # Windows PowerShell
+   $env:GEMINI_API_KEY = "your_api_key_here"
+
+   # Linux / macOS
    export GEMINI_API_KEY="your_api_key_here"
    ```
 
@@ -197,7 +389,24 @@ To test the **AI-Guarded Persona Workflow**, follow ini set-up urutan di Postman
    ```bash
    go run main.go
    ```
-   *The system handles folder creation and DB migration automatically.*
+   *Sistem otomatis membuat folder storage dan menjalankan DB migration.*
+
+5. **Akses**
+   - **Frontend**: `http://localhost:8080`
+   - **API Base**: `http://localhost:8080/api`
+
+---
+
+### 📋 Urutan Setup yang Benar (First Time)
+
+```
+1. POST /users         → Buat akun Dosen (role: lecturer)
+2. POST /users         → Buat akun Mahasiswa (role: student)
+3. POST /lecturers     → Buat profil Dosen (gunakan user_id dari step 1)
+4. POST /students      → Buat profil Mahasiswa (gunakan user_id step 2, lecturer_id step 3)
+5. POST /api/consultation → Upload rekaman & draft (gunakan user_id mahasiswa)
+6. POST /api/ai/assist → Tanya AI (gunakan log_id dari hasil step 5)
+```
 
 ---
 
