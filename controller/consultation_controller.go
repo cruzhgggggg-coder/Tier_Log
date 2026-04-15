@@ -24,6 +24,13 @@ func CreateConsultation(c *gin.Context) {
 		return
 	}
 
+	// Find the student profile for this user
+	var student models.Student
+	if err := koneksi.DB.Where("user_id = ?", userID).First(&student).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Profil Mahasiswa tidak ditemukan untuk User ini"})
+		return
+	}
+
 	audioFile, err := c.FormFile("audio")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Audio file is required"})
@@ -56,7 +63,7 @@ func CreateConsultation(c *gin.Context) {
 	// Create a .txt file in storage/transcript/ (Simulating Transcription)
 	transcriptFilename := fmt.Sprintf("%d_transcript.txt", timestamp)
 	transcriptPath := filepath.Join("storage", "transcript", transcriptFilename)
-	// Example transcript content - in a real app, this would come from a Speech-to-Text service
+	// Example transcript content - in a real app, this would come from a STT service
 	transcriptContent := "Dosen: Judulnya sudah oke, tapi metodologinya kurang jelas. Tolong jelaskan lebih detail di Bab 3. Juga ada beberapa typo di daftar pustaka."
 	if err := os.WriteFile(transcriptPath, []byte(transcriptContent), 0644); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transcript file"})
@@ -68,12 +75,11 @@ func CreateConsultation(c *gin.Context) {
 	// 1. Read Docx text
 	paperText, err := utils.ReadDocxText(paperPath)
 	if err != nil {
-		// Log error but proceed or fail? Given it's a core requirement, we fail with 500.
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to extract text from docx: " + err.Error()})
 		return
 	}
 
-	// 2. Process with Gemini via controller logic
+	// 2. Process with Gemini
 	feedbackItems, err := ProcessRevisionAssistance(transcriptContent, paperText)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI Processing failed: " + err.Error()})
@@ -82,9 +88,10 @@ func CreateConsultation(c *gin.Context) {
 
 	// 3. Save Log and Feedback Items
 	log := models.ConsultationLog{
-		UserID:             userID,
+		StudentID:          student.ID,
 		AudioFilename:      audioFilename,
 		TranscriptFilename: transcriptFilename,
+		TranscriptText:     transcriptContent,
 		PaperFilename:      paperFilename,
 		FeedbackItems:      feedbackItems,
 	}
@@ -103,7 +110,8 @@ func CreateConsultation(c *gin.Context) {
 // GET /api/consultation
 func GetConsultations(c *gin.Context) {
 	var logs []models.ConsultationLog
-	if err := koneksi.DB.Preload("FeedbackItems").Find(&logs).Error; err != nil {
+	// Preload both FeedbackItems and Student profile
+	if err := koneksi.DB.Preload("FeedbackItems").Preload("Student").Find(&logs).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
 		return
 	}

@@ -25,7 +25,7 @@ Tugasmu adalah menganalisis Draft Paper Mahasiswa berdasarkan Transkrip Bimbinga
 
 PRINSIP UTAMA:
 1. Dilarang berhalusinasi atau memberikan ide baru yang tidak ada di transkrip.
-2. Instruksi 100%% berasal dari teks transkrip rekaman.
+2. Instruksi 100% berasal dari teks transkrip rekaman.
 3. Bandingkan draf mahasiswa dengan poin-poin dalam transkrip.
 4. Hasilkan daftar tugas revisi yang spesifik.
 
@@ -42,41 +42,32 @@ Contoh format:
 ]`
 
 const feedbackPlaceholder = "[INJECT_FETCHED_FEEDBACK_ITEMS_HERE]"
+const transcriptPlaceholder = "[INJECT_ORIGINAL_TRANSCRIPT_HERE]"
 
 const systemPromptTemplate = `Peran Utama Kamu adalah asisten pendukung dosen. Tugas utamamu bukan memberikan saran mandiri atau ide baru secara acak. Kamu berfungsi sebagai jembatan yang memperluas dan mengimplementasikan feedback yang telah diberikan oleh dosen kepada mahasiswa.
 
-Alur Kerja (Wajib Urut)
-
-Tahap Konsultasi: AI tidak diperbolehkan memberikan bantuan teknis atau saran materi sebelum mahasiswa memasukkan feedback resmi dari dosen.
-
-Input Feedback: Berikut adalah poin-poin feedback resmi dari dosen yang harus dikerjakan mahasiswa:
+ALUR KERJA:
+1. Input Feedback: Berikut adalah poin-poin feedback resmi dari dosen:
 [INJECT_FETCHED_FEEDBACK_ITEMS_HERE]
 
-Generasi Persona: Setelah menerima feedback tersebut, kamu harus membentuk 'Persona Ahli' yang spesifik sesuai dengan arahan dosen. Misalnya, jika dosen meminta perbaikan pada metodologi, kamu berubah menjadi persona 'Pakar Metodologi Penelitian'.
+2. Konteks Asli: Berikut adalah transkrip asli dari sesi bimbingan tersebut sebagai referensi tambahan:
+[INJECT_ORIGINAL_TRANSCRIPT_HERE]
 
-Bantuan Kerja: Setelah persona terbentuk, kamu baru diperbolehkan membantu mahasiswa mengerjakan tugasnya dengan tetap berpegang teguh pada batasan feedback dosen tersebut.
+3. Bantuan Kerja: Gunakan feedback di atas sebagai batasan utamamu. Jika mahasiswa bertanya, jawablah dengan persona 'Pakar' yang relevan dengan topik feedback tersebut.
 
-Batasan Tindakan
-
-Dilarang Memberi Saran Mandiri: Jangan memberikan instruksi yang bertentangan atau di luar lingkup feedback dosen.
-
-Fokus Kelanjutan: Fokusmu hanya melanjutkan, merinci, dan membantu eksekusi dari apa yang sudah dikomentari dosen.
-
-Verifikasi: Jika mahasiswa meminta bantuan di luar feedback yang ada, ingatkan mahasiswa untuk melakukan konsultasi ulang dengan dosen terlebih dahulu.
-
-Tujuan Akhir Membantu mahasiswa menyelesaikan tugas dengan hasil yang selaras 100% dengan ekspektasi dan arahan dosen pembimbing.`
+BATASAN:
+- Dilarang memberi saran yang bertentangan dengan feedback dosen.
+- Jika mahasiswa meminta bantuan di luar cakupan feedback, ingatkan mereka untuk konsultasi lagi dengan dosen.`
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  GEMINI API LOGIC: REVISION EXTRACTION
 // ─────────────────────────────────────────────────────────────────────────────
 
-// FeedbackResponse represents the JSON structure from Gemini
 type FeedbackResponse struct {
 	Content  string `json:"content"`
 	Category string `json:"category"` // HOC or LOC
 }
 
-// ProcessRevisionAssistance analyzes transcript and paper to generate feedback items
 func ProcessRevisionAssistance(transcript, paper string) ([]models.FeedbackItem, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
@@ -94,10 +85,9 @@ func ProcessRevisionAssistance(transcript, paper string) ([]models.FeedbackItem,
 
 	userInput := fmt.Sprintf("=== TRANSKRIP BIMBINGAN (INSTRUKSI) ===\n%s\n\n=== DRAFT PAPER MAHASISWA ===\n%s", transcript, paper)
 
-	// Use Gemini to extract feedback
 	result, err := client.Models.GenerateContent(
 		ctx,
-		"gemini-2.0-flash", // Using the latest model for better JSON following
+		"gemini-2.0-flash",
 		genai.Text(userInput),
 		&genai.GenerateContentConfig{
 			SystemInstruction: genai.NewContentFromText(personaDosenPrompt, genai.RoleUser),
@@ -114,23 +104,18 @@ func ProcessRevisionAssistance(transcript, paper string) ([]models.FeedbackItem,
 
 	var aiFeedbacks []FeedbackResponse
 	if err := json.Unmarshal([]byte(result.Text()), &aiFeedbacks); err != nil {
-		// Attempt to extract JSON from text if it's not raw JSON
-		const startPattern = "["
-		const endPattern = "]"
 		raw := result.Text()
-		start := strings.Index(raw, startPattern)
-		end := strings.LastIndex(raw, endPattern)
+		start := strings.Index(raw, "[")
+		end := strings.LastIndex(raw, "]")
 		if start != -1 && end != -1 && end > start {
-			jsonPart := raw[start : end+1]
-			if err := json.Unmarshal([]byte(jsonPart), &aiFeedbacks); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal JSON from AI even with extraction: %w", err)
+			if err := json.Unmarshal([]byte(raw[start:end+1]), &aiFeedbacks); err != nil {
+				return nil, fmt.Errorf("failed to parse AI response as JSON: %w", err)
 			}
 		} else {
 			return nil, fmt.Errorf("failed to parse AI response as JSON: %w", err)
 		}
 	}
 
-	// Map to models.FeedbackItem
 	var items []models.FeedbackItem
 	for _, f := range aiFeedbacks {
 		category := models.CategoryMinor
@@ -148,26 +133,29 @@ func ProcessRevisionAssistance(transcript, paper string) ([]models.FeedbackItem,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  GEMINI API LOGIC: CONVERSATIONAL ASSISTANCE (EXISTING)
+//  GEMINI API LOGIC: CONVERSATIONAL ASSISTANCE
 // ─────────────────────────────────────────────────────────────────────────────
 
 func GenerateRevisionAssistance(logID uint64, studentQuery string) (string, error) {
-	var feedbackItems []models.FeedbackItem
-	if err := koneksi.DB.Where("log_id = ?", logID).Find(&feedbackItems).Error; err != nil {
+	var log models.ConsultationLog
+	if err := koneksi.DB.Preload("FeedbackItems").First(&log, logID).Error; err != nil {
 		return "", fmt.Errorf("database error: %w", err)
 	}
 
-	if len(feedbackItems) == 0 {
+	if len(log.FeedbackItems) == 0 {
 		return "", errors.New("GUARDED: Belum ada feedback resmi. Selesaikan proses bimbingan terlebih dahulu.")
 	}
 
-	var lines []string
-	for i, item := range feedbackItems {
-		lines = append(lines, fmt.Sprintf("%d. [%s] %s", i+1, item.Category, item.Content))
+	// Format feedback summary
+	var feedbackLines []string
+	for i, item := range log.FeedbackItems {
+		feedbackLines = append(feedbackLines, fmt.Sprintf("%d. [%s] %s", i+1, item.Category, item.Content))
 	}
-	formattedFeedback := strings.Join(lines, "\n")
+	formattedFeedback := strings.Join(feedbackLines, "\n")
 
+	// Prepare final prompt with extracted items AND original transcript text
 	finalSystemPrompt := strings.ReplaceAll(systemPromptTemplate, feedbackPlaceholder, formattedFeedback)
+	finalSystemPrompt = strings.ReplaceAll(finalSystemPrompt, transcriptPlaceholder, log.TranscriptText)
 
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
