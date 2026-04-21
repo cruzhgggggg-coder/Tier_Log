@@ -11,9 +11,11 @@ main
 storage/audio/*
 storage/transcript/*
 storage/feedback/*
+storage/paper/*
 !storage/audio/.gitkeep
 !storage/transcript/.gitkeep
 !storage/feedback/.gitkeep
+!storage/paper/.gitkeep
 
 # OS
 .DS_Store
