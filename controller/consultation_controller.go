@@ -117,3 +117,45 @@ func GetConsultations(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, logs)
 }
+
+// PUT /api/feedback/:id/validate
+func ValidateFeedback(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid feedback ID"})
+		return
+	}
+
+	var feedback models.FeedbackItem
+	if err := koneksi.DB.First(&feedback, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Feedback not found"})
+		return
+	}
+
+	feedback.Status = "Fixed"
+	if err := koneksi.DB.Save(&feedback).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update feedback"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Feedback validated successfully"})
+}
+
+// POST /api/consultation/:id/approve
+func ApproveConsultation(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid consultation ID"})
+		return
+	}
+
+	var log models.ConsultationLog
+	if err := koneksi.DB.First(&log, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Consultation log not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Revision approved successfully"})
+}

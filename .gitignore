@@ -20,3 +20,9 @@ storage/paper/*
 # OS
 .DS_Store
 Thumbs.db
+
+# IDE / Tooling
+.agents/
+.claude/
+.gemini/
+skills-lock.json

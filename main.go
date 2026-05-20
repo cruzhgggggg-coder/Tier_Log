@@ -57,10 +57,14 @@ func main() {
 	{
 		api.POST("/consultation", controller.CreateConsultation)
 		api.GET("/consultation", controller.GetConsultations)
+		api.POST("/consultation/:id/approve", controller.ApproveConsultation)
+		api.PUT("/feedback/:id/validate", controller.ValidateFeedback)
 		api.POST("/ai/assist", controller.AIAssistHandler)
 	}
 
 	// Identity Management
+	r.POST("/login", controller.Login)
+	r.POST("/register", controller.Register)
 	r.GET("/users", controller.GetUsers)
 	r.POST("/users", controller.CreateUser)
 	r.GET("/lecturers", controller.GetLecturers)
