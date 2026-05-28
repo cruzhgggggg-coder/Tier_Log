@@ -1,13 +1,51 @@
-# Binaries
+# Binaries & OS
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+*.log
 bin/
 main
+.DS_Store
+Thumbs.db
 
-# Storage
+# Environment Files
+.env
+.env.*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Go Specific
+vendor/
+go.sum.tmp
+
+# Frontend / Node / Expo
+node_modules/
+tierlog_web/node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+.parcel-cache/
+.turbo/
+.next/
+dist/
+build/
+coverage/
+tierlog_web/.expo/
+tierlog_web/.next/
+tierlog_web/dist/
+tierlog_web/web-build/
+tierlog_web/.vercel/
+tierlog_web/npm-debug.log*
+tierlog_web/yarn-debug.log*
+tierlog_web/yarn-error.log*
+tierlog_web/.pnpm-debug.log*
+
+# Local Storage/Uploads
 storage/audio/*
 storage/transcript/*
 storage/feedback/*
@@ -17,12 +55,19 @@ storage/paper/*
 !storage/feedback/.gitkeep
 !storage/paper/.gitkeep
 
-# OS
-.DS_Store
-Thumbs.db
+# Scratch/Temporary
+scratch/
+agent.md
+query
+screenshoot/
 
-# IDE / Tooling
+# Agent/IDE Specific
 .agents/
-.claude/
-.gemini/
+.planning/
+SKILL.md
 skills-lock.json
+.vscode/
+.idea/
+
+# Cygwin stack dumps
+*.stackdump

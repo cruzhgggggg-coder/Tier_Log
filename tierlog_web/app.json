@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "TierLog Web",
+    "slug": "tierlog-web",
+    "scheme": "tierlog-web",
+    "web": {
+      "bundler": "metro"
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
