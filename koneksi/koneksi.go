@@ -3,6 +3,7 @@ package koneksi
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"testing_go/models"
 
@@ -29,7 +30,7 @@ func ConnectDatabase() {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", user, password, host, port, dbname)
 	database, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		panic("Terjadi kesalahan saat menghubungkan ke database: " + err.Error())
+		panic("An error occurred while connecting to the database: " + err.Error())
 	}
 
 	if err := database.AutoMigrate(
@@ -42,8 +43,9 @@ func ConnectDatabase() {
 		&models.RedeemCode{},
 		&models.RefreshToken{},
 		&models.DirectMessage{},
+		&models.AIChatMessage{},
 	); err != nil {
-		panic("Terjadi kesalahan saat migrasi database: " + err.Error())
+		panic("An error occurred during database migration: " + err.Error())
 	}
 
 	// Clean up accidental consultation_log_id column and its foreign key constraints created by GORM prior to the mapping fix
@@ -58,6 +60,18 @@ func ConnectDatabase() {
 		_ = migrator.DropColumn(&models.FeedbackItem{}, "consultation_log_id")
 	}
 
+	// Ensure the status enum in feedback_items includes 'Validated'
+	_ = database.Exec("ALTER TABLE feedback_items MODIFY COLUMN status ENUM('Fixed', 'Pending', 'Validated') NOT NULL DEFAULT 'Pending'").Error
+
+	// Production-grade connection pooling optimization
+	sqlDB, err := database.DB()
+	if err == nil {
+		sqlDB.SetMaxIdleConns(15)
+		sqlDB.SetMaxOpenConns(150)
+		sqlDB.SetConnMaxLifetime(30 * time.Minute)
+		sqlDB.SetConnMaxIdleTime(10 * time.Minute)
+	}
+
 	DB = database
-	fmt.Println("Koneksi database berhasil!")
+	fmt.Println("Database connection successful!")
 }

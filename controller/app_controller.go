@@ -186,12 +186,12 @@ func Login(c *gin.Context) {
 
 	var user models.User
 	if err := koneksi.DB.Preload("Student").Preload("Lecturer").Where("email = ?", strings.ToLower(strings.TrimSpace(req.Email))).First(&user).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Email atau password salah"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect email or password"})
 		return
 	}
 
 	if !auth.ComparePassword(user.Password, req.Password) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Email atau password salah"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect email or password"})
 		return
 	}
 
@@ -211,12 +211,12 @@ func Refresh(c *gin.Context) {
 	tokenHash := auth.HashRefreshToken(req.RefreshToken)
 	var session models.RefreshToken
 	if err := koneksi.DB.Where("token_hash = ?", tokenHash).First(&session).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token tidak valid"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
 		return
 	}
 
 	if session.RevokedAt != nil || time.Now().After(session.ExpiresAt) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token kadaluarsa atau telah dicabut"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token has expired or has been revoked"})
 		return
 	}
 
@@ -226,7 +226,7 @@ func Refresh(c *gin.Context) {
 
 	var user models.User
 	if err := koneksi.DB.Preload("Student").Preload("Lecturer").First(&user, session.UserID).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User tidak ditemukan"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 		return
 	}
 
@@ -249,7 +249,7 @@ func Logout(c *gin.Context) {
 		Where("token_hash = ? AND revoked_at IS NULL", tokenHash).
 		Update("revoked_at", &now)
 
-	c.JSON(http.StatusOK, gin.H{"message": "Logout berhasil"})
+	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
 
 func Me(c *gin.Context) {
@@ -287,7 +287,7 @@ func UpdateProfile(c *gin.Context) {
 	if user.Role == models.RoleStudent {
 		var student models.Student
 		if err := koneksi.DB.Where("user_id = ?", user.ID).First(&student).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Profil mahasiswa tidak ditemukan"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "Student profile not found"})
 			return
 		}
 		student.Name = req.Name
@@ -307,7 +307,7 @@ func UpdateProfile(c *gin.Context) {
 	} else if user.Role == models.RoleLecturer {
 		var lecturer models.Lecturer
 		if err := koneksi.DB.Where("user_id = ?", user.ID).First(&lecturer).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Profil dosen tidak ditemukan"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "Lecturer profile not found"})
 			return
 		}
 		lecturer.Name = req.Name
@@ -323,7 +323,7 @@ func UpdateProfile(c *gin.Context) {
 		user.Lecturer = &lecturer
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Profil berhasil diperbarui", "user": sanitizeUser(user)})
+	c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully", "user": sanitizeUser(user)})
 }
 
 func UpdatePassword(c *gin.Context) {
@@ -339,7 +339,7 @@ func UpdatePassword(c *gin.Context) {
 		return
 	}
 	if !auth.ComparePassword(user.Password, req.CurrentPassword) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Password saat ini tidak sesuai"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Current password does not match"})
 		return
 	}
 
@@ -355,7 +355,7 @@ func UpdatePassword(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Password berhasil diperbarui"})
+	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
 
 func UpdateAIGatewaySettingsV2(c *gin.Context) {
@@ -387,7 +387,7 @@ func UpdateAIGatewaySettingsV2(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Pengaturan AI Gateway berhasil diperbarui", "user": sanitizeUser(user)})
+	c.JSON(http.StatusOK, gin.H{"message": "AI Gateway settings updated successfully", "user": sanitizeUser(user)})
 }
 
 func RedeemGatewayCodeV2(c *gin.Context) {
@@ -403,7 +403,7 @@ func RedeemGatewayCodeV2(c *gin.Context) {
 
 	var redeemCode models.RedeemCode
 	if err := koneksi.DB.Where("code = ? AND is_used = ?", req.Code, false).First(&redeemCode).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Kode redeem tidak valid atau sudah digunakan"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Redeem code is invalid or has already been used"})
 		return
 	}
 
@@ -421,7 +421,7 @@ func RedeemGatewayCodeV2(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "AI Gateway berhasil diaktifkan", "user": sanitizeUser(user)})
+	c.JSON(http.StatusOK, gin.H{"message": "AI Gateway activated successfully", "user": sanitizeUser(user)})
 }
 
 func queryScopeForUser(query *gorm.DB, user *models.User) *gorm.DB {
@@ -451,7 +451,7 @@ func DashboardStatsV2(c *gin.Context) {
 	feedbackQuery.Count(&totalFeedback)
 	feedbackQuery.Session(&gorm.Session{}).Where("feedback_items.category = ?", models.CategoryMajor).Count(&majorFeedback)
 	feedbackQuery.Session(&gorm.Session{}).Where("feedback_items.status = ?", models.StatusPending).Count(&pendingFeedback)
-	feedbackQuery.Session(&gorm.Session{}).Where("feedback_items.status = ?", models.StatusPending).Order("feedback_items.created_at desc").Limit(5).Find(&quests)
+	feedbackQuery.Session(&gorm.Session{}).Where("feedback_items.status != ?", models.StatusValidated).Order("feedback_items.created_at desc").Limit(5).Find(&quests)
 
 	completionRate := 0
 	if totalFeedback > 0 {
@@ -531,13 +531,13 @@ func ArchiveListV2(c *gin.Context) {
 func CreateConsultationV2(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	if user.Role != models.RoleStudent {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Hanya mahasiswa yang dapat membuat konsultasi"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only students can create consultations"})
 		return
 	}
 
 	var student models.Student
 	if err := koneksi.DB.Where("user_id = ?", user.ID).First(&student).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Profil mahasiswa tidak ditemukan"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Student profile not found"})
 		return
 	}
 
@@ -692,15 +692,25 @@ func ConsultationChatV2(c *gin.Context) {
 
 	log, err := accessibleLog(user, req.LogID)
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Akses ditolak atau log tidak ditemukan"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied or consultation log not found"})
 		return
 	}
 
+	// 1. Save user query to database
+	userMsg := models.AIChatMessage{
+		LogID:   log.ID,
+		Role:    "user",
+		Content: req.Query,
+	}
+	koneksi.DB.Create(&userMsg)
+
 	if WebSocketHub != nil {
 		WebSocketHub.Broadcast("consultation."+strconv.FormatUint(req.LogID, 10), "chat.message", gin.H{
-			"log_id":  req.LogID,
-			"role":    "user",
-			"content": req.Query,
+			"id":         userMsg.ID,
+			"log_id":     req.LogID,
+			"role":       "user",
+			"content":    req.Query,
+			"created_at": userMsg.CreatedAt,
 		})
 	}
 
@@ -715,15 +725,50 @@ func ConsultationChatV2(c *gin.Context) {
 		return
 	}
 
+	// 2. Save AI response to database
+	aiMsg := models.AIChatMessage{
+		LogID:   log.ID,
+		Role:    "ai",
+		Content: response,
+	}
+	koneksi.DB.Create(&aiMsg)
+
 	if WebSocketHub != nil {
 		WebSocketHub.Broadcast("consultation."+strconv.FormatUint(req.LogID, 10), "chat.message", gin.H{
-			"log_id":  req.LogID,
-			"role":    "ai",
-			"content": response,
+			"id":         aiMsg.ID,
+			"log_id":     req.LogID,
+			"role":       "ai",
+			"content":    response,
+			"created_at": aiMsg.CreatedAt,
 		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "success", "ai_response": response})
+}
+
+// GetAIChats fetches all persistent AI chats for a given log ID.
+func GetAIChats(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	logIDStr := c.Param("id")
+	logID, err := strconv.ParseUint(logIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid log ID"})
+		return
+	}
+
+	log, err := accessibleLog(user, logID)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+
+	var messages []models.AIChatMessage
+	if err := koneksi.DB.Where("log_id = ?", log.ID).Order("created_at asc").Find(&messages).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": messages})
 }
 
 func UpdateFeedbackStatusV2(c *gin.Context) {
@@ -739,24 +784,30 @@ func UpdateFeedbackStatusV2(c *gin.Context) {
 		return
 	}
 
-	if req.Status == string(models.StatusValidated) && user.Role != models.RoleLecturer {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Hanya dosen yang dapat memvalidasi feedback"})
-		return
-	}
-	if (req.Status == string(models.StatusFixed) || req.Status == string(models.StatusPending)) && user.Role != models.RoleStudent {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Hanya mahasiswa yang dapat mengubah status ini"})
+	if user.Role == models.RoleStudent {
+		if req.Status != string(models.StatusFixed) && req.Status != string(models.StatusPending) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Students can only change status to Pending or Fixed"})
+			return
+		}
+	} else if user.Role == models.RoleLecturer {
+		if req.Status != string(models.StatusValidated) && req.Status != string(models.StatusPending) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Lecturers can only validate (Validated) or return status to Pending"})
+			return
+		}
+	} else {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unknown role"})
 		return
 	}
 
 	var feedback models.FeedbackItem
 	if err := koneksi.DB.First(&feedback, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Feedback tidak ditemukan"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Feedback item not found"})
 		return
 	}
 
 	log, err := accessibleLog(user, feedback.ConsultationLogID)
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Akses ditolak"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
 
@@ -778,13 +829,13 @@ func UpdateFeedbackStatusV2(c *gin.Context) {
 		WebSocketHub.Broadcast("consultation."+strconv.FormatUint(log.ID, 10), "feedback.status-updated", payload)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Status feedback berhasil diperbarui", "data": payload})
+	c.JSON(http.StatusOK, gin.H{"message": "Feedback status updated successfully", "data": payload})
 }
 
 func LecturerConsultationsV2(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	if user.Role != models.RoleLecturer || user.Lecturer == nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Hanya dosen yang dapat mengakses data ini"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only lecturers can access this data"})
 		return
 	}
 
@@ -804,7 +855,7 @@ func LecturerConsultationsV2(c *gin.Context) {
 func LecturerStudentsV2(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	if user.Role != models.RoleLecturer || user.Lecturer == nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Hanya dosen yang dapat mengakses data ini"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only lecturers can access this data"})
 		return
 	}
 

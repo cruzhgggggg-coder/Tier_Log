@@ -257,6 +257,12 @@ func callNVIDIA(apiKey, model, systemPrompt, userPrompt string, isJSON bool) (st
 	fmt.Printf("\033[32m[NVIDIA NIM] Response Received! Status: %d, Size: %d bytes\033[0m\n", resp.StatusCode, len(body))
 
 	if resp.StatusCode != http.StatusOK {
+		// Auto-fallback: if model is deprecated/missing (404/400) and we're not already on the fallback model
+		if (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusBadRequest) && model != "meta/llama-3.1-70b-instruct" {
+			fmt.Printf("\033[33m[NVIDIA NIM] Model '%s' failed with status %d. Retrying with fallback model 'meta/llama-3.1-70b-instruct'...\033[0m\n", model, resp.StatusCode)
+			return callNVIDIA(apiKey, "meta/llama-3.1-70b-instruct", systemPrompt, userPrompt, isJSON)
+		}
+
 		// Fallback for models that do not support json_object format (e.g. Bytedance Seed OSS)
 		if isJSON && reqBody.ResponseFormat != nil {
 			fmt.Printf("\033[33m[NVIDIA NIM] Retrying without JSON response_format...\033[0m\n")

@@ -86,6 +86,7 @@ func main() {
 		protected.POST("/consultations/:id/add-feedback", controller.LecturerAddFeedbackV2)
 		protected.GET("/consultations/:id/direct-messages", controller.GetDirectMessages)
 		protected.POST("/consultations/:id/direct-messages", controller.SendDirectMessage)
+		protected.GET("/consultations/:id/ai-chats", controller.GetAIChats)
 		protected.POST("/consultations/:id/classify-feedback", controller.ClassifyFeedbackV2)
 		protected.GET("/lecturer/consultations", controller.LecturerConsultationsV2)
 		protected.GET("/lecturer/students", controller.LecturerStudentsV2)

@@ -16,15 +16,15 @@ export default function RootLayout() {
           height: 8px;
         }
         ::-webkit-scrollbar-track {
-          background: rgba(7, 10, 19, 0.3);
+          background: rgba(15, 23, 42, 0.5);
         }
         ::-webkit-scrollbar-thumb {
-          background: rgba(99, 102, 241, 0.25);
+          background: rgba(99, 102, 241, 0.35);
           border-radius: 99px;
-          border: 2px solid #070a13;
+          border: 2px solid #020617;
         }
         ::-webkit-scrollbar-thumb:hover {
-          background: rgba(99, 102, 241, 0.5);
+          background: rgba(99, 102, 241, 0.6);
         }
         
         /* Custom ultra-thin scrollbar for transcripts and chats */
@@ -49,15 +49,35 @@ export default function RootLayout() {
         
         /* Smooth text selection styling */
         ::selection {
-          background: rgba(99, 102, 241, 0.3);
+          background: rgba(99, 102, 241, 0.4);
           color: #ffffff;
         }
         
-        /* Global body properties to match deep Clarity backdrop */
-        body {
-          background-color: #070a13 !important;
-          margin: 0;
+        /* Global html, body, and root properties for fullscreen immersive dark mode */
+        html, body, #root, div[data-reactroot] {
+          background-color: #020617 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          height: 100% !important;
+          width: 100% !important;
+          min-height: 100vh !important;
+          min-width: 100vw !important;
+          overflow: hidden;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        /* Force react-native-web top elements to stretch to full viewport height */
+        #root > div {
+          height: 100% !important;
+          width: 100% !important;
+          display: flex !important;
+          flex-direction: column !important;
+        }
+        
+        /* Remove default browser focus outlines on Canvas and active tap highlights */
+        canvas, div, [tabindex] {
+          outline: none !important;
+          -webkit-tap-highlight-color: transparent !important;
         }
       `;
       document.head.appendChild(style);

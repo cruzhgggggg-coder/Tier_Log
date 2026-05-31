@@ -55,15 +55,15 @@ export default function ProfileScreen() {
         
         <Heading 
           title="Profile Settings" 
-          subtitle="Manage your digital identity, institutional credentials, and academic affiliation metadata." 
+          subtitle="Update your profile information and academic credentials." 
         />
 
         <View style={styles.layout}>
           {/* Main Account Form Card */}
           <Card style={styles.formCard}>
             <View style={styles.sectionHeader}>
-              <ProfileIcon color="#6366f1" size={20} />
-              <Text style={styles.sectionTitle}>Primary Credentials & Identity</Text>
+              <ProfileIcon color="#4F46E5" size={20} />
+              <Text style={styles.sectionTitle}>Account Information</Text>
             </View>
 
             <View style={styles.fieldsGroup}>
@@ -123,27 +123,27 @@ export default function ProfileScreen() {
               )}
 
 
-              {/* Glowing feedback alert banner */}
+              {/* Feedback alert banner */}
               {message ? (
                 <View style={[
                   styles.alertBox,
                   isSuccess ? styles.alertSuccess : styles.alertError
                 ]}>
                   {isSuccess ? (
-                    <CheckCircleIcon color="#10b981" size={18} />
+                    <CheckCircleIcon color="#059669" size={18} />
                   ) : (
-                    <AlertIcon color="#ef4444" size={18} />
+                    <AlertIcon color="#DC2626" size={18} />
                   )}
                   <Text style={[
                     styles.alertText,
-                    isSuccess ? { color: "#a7f3d0" } : { color: "#fca5a5" }
+                    isSuccess ? { color: "#059669" } : { color: "#DC2626" }
                   ]}>
                     {message}
                   </Text>
                 </View>
               ) : null}
 
-              <Button title="Save Profile Modifications" onPress={() => void save()} />
+              <Button title="Save Changes" onPress={() => void save()} />
             </View>
           </Card>
         </View>
@@ -165,12 +165,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255,255,255,0.08)",
     paddingBottom: 16,
     marginBottom: 24,
   },
   sectionTitle: {
-    color: "#ffffff",
+    color: "#F8FAFC", // Titanium White
     fontSize: 18,
     fontWeight: "900",
     letterSpacing: -0.5,
@@ -184,16 +184,16 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   academicWrapper: {
-    backgroundColor: "rgba(2, 6, 23, 0.25)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)", // Premium dark transparent slot
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.03)",
+    borderColor: "rgba(255, 255, 255, 0.06)", // Micro-edge white border
     borderRadius: 18,
     padding: 20,
     marginVertical: 12,
     gap: 14,
   },
   academicHeader: {
-    color: "#6366f1",
+    color: "#6366F1", // Neon Indigo accent
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 1.5,
@@ -208,12 +208,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   alertSuccess: {
-    backgroundColor: "rgba(16, 185, 129, 0.06)",
-    borderColor: "rgba(16, 185, 129, 0.2)",
+    backgroundColor: "rgba(5, 150, 105, 0.06)",
+    borderColor: "rgba(5, 150, 105, 0.2)",
   },
   alertError: {
-    backgroundColor: "rgba(239, 68, 68, 0.06)",
-    borderColor: "rgba(239, 68, 68, 0.2)",
+    backgroundColor: "rgba(220, 38, 38, 0.06)",
+    borderColor: "rgba(220, 38, 38, 0.2)",
   },
   alertText: {
     fontSize: 13,
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
   /* ==================== DEVELOPER CONFIG TERMINAL STYLES ==================== */
   terminalWrapper: {
     backgroundColor: "#020617",
-    borderColor: "rgba(6, 182, 212, 0.15)",
+    borderColor: "rgba(0, 0, 0, 0.1)",
     borderWidth: 1,
     borderRadius: 16,
     overflow: "hidden",
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     padding: 0,
     ...Platform.select({
       web: {
-        boxShadow: "0 8px 30px 0 rgba(0,0,0,0.6)",
+        boxShadow: "0 4px 16px 0 rgba(0,0,0,0.1)",
       }
     })
   } as any,
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   syntaxKey: {
-    color: "#06b6d4",
+    color: "#0891B2",
     fontFamily: Platform.OS === "web" ? "Courier New, monospace" : "monospace",
     fontSize: 13,
     fontWeight: "700",

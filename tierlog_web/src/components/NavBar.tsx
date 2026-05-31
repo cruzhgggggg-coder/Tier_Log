@@ -37,19 +37,19 @@ export function NavBar() {
   const links = user?.role === "lecturer" ? lecturerLinks : studentLinks;
 
   return (
-    <View style={[getGlassStyle(0.6, 20), styles.wrap]}>
-      {/* Brand Logo and Active Client Status */}
+    <View style={[getGlassStyle(0.85, 16), styles.wrap]}>
+      {/* Brand */}
       <View style={styles.left}>
-        <Text style={styles.brand}>TierLog // Academic</Text>
+        <Text style={styles.brand}>TierLog</Text>
         <View style={styles.metaRow}>
           <View style={styles.statusDot} />
           <Text style={styles.meta}>
-            {user?.name} ({user?.role === "lecturer" ? "Lecturer" : "Student"})
+            {user?.name} · {user?.role === "lecturer" ? "Advisor" : "Student"}
           </Text>
         </View>
       </View>
 
-      {/* Grid Links and Logout Gateway */}
+      {/* Navigation Links */}
       <View style={styles.right}>
         {links.map((link) => {
           const isActive = pathname === link.href;
@@ -66,14 +66,15 @@ export function NavBar() {
                 styles.link,
                 isActive ? styles.linkActive : styles.linkInactive,
                 {
-                  transform: [{ scale: pressed ? 0.96 : isHovered ? 1.02 : 1 }],
+                  transform: [{ scale: pressed ? 0.97 : isHovered ? 1.01 : 1 }],
                 },
-                isActive && (getGlowStyle("#6366f1", 0.3) as any),
+                isActive && (getGlowStyle("#6366F1", 0.15) as any),
+                !isActive && isHovered && styles.linkHovered,
               ] as any}
             >
               <Icon
-                color={isActive ? "#ffffff" : isHovered ? "#6366f1" : "#64748b"}
-                size={16}
+                color={isActive ? "#ffffff" : isHovered ? "#6366F1" : "#94A3B8"}
+                size={15}
                 style={{ transition: "color 0.2s ease" }}
               />
               <Text
@@ -82,8 +83,8 @@ export function NavBar() {
                   isActive
                     ? { color: "#ffffff" }
                     : isHovered
-                    ? { color: "#f8fafc" }
-                    : { color: "#94a3b8" },
+                    ? { color: "#6366F1" }
+                    : { color: "#94A3B8" },
                 ]}
               >
                 {link.label}
@@ -99,18 +100,19 @@ export function NavBar() {
           style={({ pressed }) => [
             styles.link,
             styles.logout,
+            hoveredLink === "logout" && styles.logoutHovered,
             {
-              transform: [{ scale: pressed ? 0.96 : hoveredLink === "logout" ? 1.02 : 1 }],
+              transform: [{ scale: pressed ? 0.97 : hoveredLink === "logout" ? 1.01 : 1 }],
             },
           ] as any}
         >
           <LogoutIcon
-            color={hoveredLink === "logout" ? "#ffffff" : "#fca5a5"}
-            size={16}
+            color={hoveredLink === "logout" ? "#ffffff" : "#EF4444"}
+            size={15}
             style={{ transition: "color 0.2s ease" }}
           />
-          <Text style={[styles.linkText, { color: hoveredLink === "logout" ? "#ffffff" : "#fca5a5" }]}>
-            Logout
+          <Text style={[styles.linkText, { color: hoveredLink === "logout" ? "#ffffff" : "#EF4444" }]}>
+            Sign Out
           </Text>
         </Pressable>
       </View>
@@ -120,22 +122,22 @@ export function NavBar() {
 
 const styles = StyleSheet.create({
   wrap: {
-    paddingHorizontal: 22,
-    paddingVertical: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     gap: 16,
     flexWrap: "wrap",
-    borderColor: "rgba(99, 102, 241, 0.12)",
-    borderRadius: 20,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 14,
     marginBottom: 8,
   },
   left: {
-    gap: 4,
+    gap: 3,
   },
   brand: {
-    color: "#f8fafc",
+    color: "#F8FAFC", // Titanium White
     fontSize: 18,
     fontWeight: "900",
     letterSpacing: -0.5,
@@ -149,46 +151,54 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 99,
-    backgroundColor: "#10b981",
-    boxShadow: "0 0 8px #10b981",
+    backgroundColor: "#10B981",
+    boxShadow: "0 0 6px rgba(16, 185, 129, 0.4)",
   } as any,
   meta: {
-    color: "#64748b",
+    color: "#94A3B8", // Slate Silver
     fontSize: 12,
     fontWeight: "600",
   },
   right: {
     flexDirection: "row",
-    gap: 8,
+    gap: 6,
     flexWrap: "wrap",
     alignItems: "center",
   },
   link: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 7,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
     borderWidth: 1,
-    transition: "all 0.2s ease-in-out",
+    transition: "all 0.2s ease",
   } as any,
   linkActive: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#6366F1",
     borderColor: "rgba(99, 102, 241, 0.2)",
   },
   linkInactive: {
-    backgroundColor: "rgba(2, 6, 23, 0.3)",
-    borderColor: "rgba(255, 255, 255, 0.03)",
+    backgroundColor: "transparent",
+    borderColor: "transparent",
+  },
+  linkHovered: {
+    backgroundColor: "rgba(99, 102, 241, 0.08)",
+    borderColor: "rgba(99, 102, 241, 0.15)",
   },
   logout: {
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
-    borderColor: "rgba(239, 68, 68, 0.15)",
+    backgroundColor: "transparent",
+    borderColor: "transparent",
+  },
+  logoutHovered: {
+    backgroundColor: "#EF4444",
+    borderColor: "rgba(239, 68, 68, 0.2)",
   },
   linkText: {
     fontSize: 13,
-    fontWeight: "750",
-    letterSpacing: -0.2,
+    fontWeight: "700",
+    letterSpacing: -0.1,
     transition: "color 0.2s ease",
   } as any,
 });

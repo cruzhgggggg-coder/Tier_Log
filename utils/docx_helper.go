@@ -113,7 +113,7 @@ func ExtractDocxTrackChanges(path string) (string, error) {
 			author := m[1]
 			text := strings.TrimSpace(tagRe.ReplaceAllString(m[2], ""))
 			if text != "" {
-				comments = append(comments, fmt.Sprintf("Komentar #%d (%s): %s", i+1, author, text))
+				comments = append(comments, fmt.Sprintf("Comment #%d (%s): %s", i+1, author, text))
 			}
 		}
 		break
@@ -122,15 +122,15 @@ func ExtractDocxTrackChanges(path string) (string, error) {
 	// 3. Build summary
 	var parts []string
 	if len(insertions) > 0 {
-		parts = append(parts, "=== TEKS SISIPAN (Track Changes) ===")
+		parts = append(parts, "=== INSERTED TEXT (Track Changes) ===")
 		parts = append(parts, strings.Join(insertions, "\n"))
 	}
 	if len(comments) > 0 {
-		parts = append(parts, "=== KOMENTAR DOSEN ===")
+		parts = append(parts, "=== LECTURER COMMENTS ===")
 		parts = append(parts, strings.Join(comments, "\n"))
 	}
 	if len(parts) == 0 {
-		return "(Tidak ditemukan track changes atau komentar dalam dokumen ini)", nil
+		return "(No track changes or comments found in this document)", nil
 	}
 	return strings.Join(parts, "\n\n"), nil
 }

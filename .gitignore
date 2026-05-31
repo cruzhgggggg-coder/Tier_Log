@@ -71,3 +71,8 @@ skills-lock.json
 
 # Cygwin stack dumps
 *.stackdump
+
+# Graphify & custom documentations
+graphify-out/
+penjelasan.md
+

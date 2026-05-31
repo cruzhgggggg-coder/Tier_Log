@@ -2,25 +2,33 @@ import React, { useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { getGlassStyle, getGlowStyle } from "./icons";
 
-// Premium Page Container with subtle glowing aesthetic
-export function Page({ children }: { children: React.ReactNode }) {
+export function Page({
+  children,
+  fullWidth = false,
+  style,
+  contentContainerStyle,
+}: {
+  children: React.ReactNode;
+  fullWidth?: boolean;
+  style?: any;
+  contentContainerStyle?: any;
+}) {
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
-      {/* Dynamic background mesh effect for web viewport */}
+    <ScrollView style={[styles.page, style]} contentContainerStyle={[styles.pageContent, contentContainerStyle]}>
       {Platform.OS === "web" && (
         <View style={styles.webMeshOverlay as any} />
       )}
-      <View style={styles.container}>{children}</View>
+      <View style={fullWidth ? styles.containerFull : styles.container}>{children}</View>
     </ScrollView>
   );
 }
 
-// Glassmorphic Card Container
+// ─── Frosted Glass Card ─────────────────────────────────────────────
 export function Card({ children, style }: { children: React.ReactNode; style?: object }) {
   return <View style={[getGlassStyle(), style]}>{children}</View>;
 }
 
-// Typographically Balanced Heading Component
+// ─── Section Heading ────────────────────────────────────────────────
 export function Heading({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <View style={styles.headingWrap}>
@@ -33,15 +41,15 @@ export function Heading({ title, subtitle }: { title: string; subtitle?: string 
   );
 }
 
-// Glowing Active-State Input Fields
+// ─── Input Field ────────────────────────────────────────────────────
 export function Field(props: React.ComponentProps<typeof TextInput> & { label: string }) {
   const [isFocused, setIsFocused] = useState(false);
 
   return (
     <View style={styles.fieldContainer}>
-      <Text style={[styles.label, isFocused && { color: "#6366f1" }]}>{props.label}</Text>
+      <Text style={[styles.label, isFocused && { color: "#4F46E5" }]}>{props.label}</Text>
       <TextInput
-        placeholderTextColor="#475569"
+        placeholderTextColor="#94A3B8"
         {...props}
         onFocus={(e) => {
           setIsFocused(true);
@@ -54,7 +62,6 @@ export function Field(props: React.ComponentProps<typeof TextInput> & { label: s
         style={[
           styles.input,
           isFocused ? styles.inputFocused : styles.inputBlur,
-          isFocused && (getGlowStyle("#6366f1", 0.25) as any),
           props.style,
         ]}
       />
@@ -62,7 +69,7 @@ export function Field(props: React.ComponentProps<typeof TextInput> & { label: s
   );
 }
 
-// Animated Haptic-Scale Action Buttons
+// ─── Action Button ──────────────────────────────────────────────────
 export function Button({
   title,
   onPress,
@@ -78,15 +85,14 @@ export function Button({
 }) {
   const [isHovered, setIsHovered] = useState(false);
 
-  // Map tones to primary color schemes
   const getToneColor = () => {
     if (glowColor) return glowColor;
     switch (tone) {
-      case "danger": return "#ef4444";
-      case "success": return "#10b981";
-      case "warning": return "#f59e0b";
-      case "secondary": return "#64748b";
-      default: return "#6366f1";
+      case "danger": return "#EF4444";
+      case "success": return "#059669";
+      case "warning": return "#D97706";
+      case "secondary": return "#64748B";
+      default: return "#4F46E5";
     }
   };
 
@@ -110,17 +116,16 @@ export function Button({
           ? styles.btnWarning
           : styles.btnPrimary,
         {
-          opacity: disabled ? 0.45 : pressed ? 0.94 : 1,
-          transform: [{ scale: pressed ? 0.96 : isHovered ? 1.02 : 1 }],
+          opacity: disabled ? 0.5 : pressed ? 0.92 : 1,
+          transform: [{ scale: pressed ? 0.95 : isHovered ? 1.025 : 1 }],
         },
-        !disabled && tone !== "secondary" && (getGlowStyle(activeColor, isHovered ? 0.35 : 0.18) as any),
-        !disabled && tone === "secondary" && isHovered && (getGlowStyle("#6366f1", 0.15) as any),
+        !disabled && isHovered && (getGlowStyle(activeColor, 0.18) as any),
       ]}
     >
       <Text
         style={[
           styles.buttonText,
-          tone === "secondary" ? { color: "#cbd5e1" } : { color: "#ffffff" },
+          tone === "secondary" ? { color: "#F1F5F9" } : { color: "#ffffff" },
         ]}
       >
         {title}
@@ -129,31 +134,30 @@ export function Button({
   );
 }
 
-// Specialized Custom Status Badges
+// ─── Status Badge ───────────────────────────────────────────────────
 export function Badge({ text, color }: { text: string; color?: string }) {
   const isSuccess = text.toLowerCase().includes("fixed") || text.toLowerCase().includes("validated") || text.toLowerCase().includes("clear") || text.toLowerCase().includes("setuju");
   const isPending = text.toLowerCase().includes("pending") || text.toLowerCase().includes("new") || text.toLowerCase().includes("antrean") || text.toLowerCase().includes("revisi");
-  
-  const badgeColor = color 
-    ? color 
-    : isSuccess 
-    ? "#10b981" 
-    : isPending 
-    ? "#f59e0b" 
-    : "#6366f1";
+
+  const badgeColor = color
+    ? color
+    : isSuccess
+    ? "#059669"
+    : isPending
+    ? "#D97706"
+    : "#4F46E5";
 
   return (
     <View
       style={[
         styles.badge,
-        { borderColor: `${badgeColor}33`, backgroundColor: `${badgeColor}12` },
-        getGlowStyle(badgeColor, 0.08) as any
+        { borderColor: `${badgeColor}22`, backgroundColor: `${badgeColor}0A` },
       ]}
     >
       <Text
         style={[
           styles.badgeText,
-          { color: badgeColor }
+          { color: badgeColor },
         ]}
       >
         {text}
@@ -162,42 +166,43 @@ export function Badge({ text, color }: { text: string; color?: string }) {
   );
 }
 
-// Glassmorphic High-Impact Stat Display
-export function StatCard({ 
-  label, 
-  value, 
-  glowColor = "#6366f1" 
-}: { 
-  label: string; 
+// ─── Stat Metric Card ───────────────────────────────────────────────
+export function StatCard({
+  label,
+  value,
+  glowColor = "#4F46E5",
+}: {
+  label: string;
   value: string | number;
   glowColor?: string;
 }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
-    <Pressable 
+    <Pressable
       onHoverIn={Platform.OS === "web" ? () => setIsHovered(true) : undefined}
       onHoverOut={Platform.OS === "web" ? () => setIsHovered(false) : undefined}
       style={({ pressed }) => [
-        getGlassStyle(0.35, 24) as any, 
+        getGlassStyle(0.82, 20) as any,
         styles.statCard,
-        isHovered && (getGlowStyle(glowColor, 0.2) as any),
+        isHovered && (getGlowStyle(glowColor, 0.14) as any),
         {
-          transform: [{ translateY: pressed ? -2 : isHovered ? -4 : 0 }]
-        }
+          transform: [{ translateY: pressed ? -1 : isHovered ? -3 : 0 }],
+        },
       ]}
     >
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, { textShadowColor: glowColor, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 10 }]}>{value}</Text>
+      <Text style={[styles.statValue, { color: glowColor }]}>{value}</Text>
       <View style={[styles.statDecor, { backgroundColor: `${glowColor}08` }]} />
     </Pressable>
   );
 }
 
+// ─── Styles ─────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: "#070a13",
+    backgroundColor: "#020617", // Midnight Obsidian
   },
   pageContent: {
     paddingVertical: 32,
@@ -209,16 +214,20 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 600,
+    height: 500,
     zIndex: -1,
-    opacity: 0.15,
+    opacity: 0.45,
     backgroundImage:
-      "radial-gradient(circle at 50% -20%, #4f46e5, transparent 70%), radial-gradient(circle at 10% 20%, #06b6d4, transparent 40%)",
+      "radial-gradient(circle at 60% -10%, rgba(99, 102, 241, 0.15), transparent 60%), radial-gradient(circle at 10% 30%, rgba(20, 184, 166, 0.1), transparent 50%)",
   },
   container: {
     maxWidth: 1200,
     width: "100%",
     alignSelf: "center",
+    gap: 24,
+  },
+  containerFull: {
+    width: "100%",
     gap: 24,
   },
   headingWrap: {
@@ -229,141 +238,127 @@ const styles = StyleSheet.create({
   },
   accentBar: {
     width: 4,
-    height: 48,
+    height: 44,
     borderRadius: 99,
-    backgroundColor: "#6366f1",
+    backgroundColor: "#6366F1",
   },
   heading: {
-    color: "#f8fafc",
-    fontSize: 32,
-    fontWeight: "900",
+    color: "#F8FAFC", // Titanium White
+    fontSize: 28,
+    fontWeight: "800",
     letterSpacing: -0.5,
   },
   subtitle: {
-    color: "#64748b",
+    color: "#94A3B8", // Slate Silver
     fontSize: 14,
-    marginTop: 6,
+    marginTop: 4,
     lineHeight: 20,
     fontWeight: "500",
   },
   fieldContainer: {
-    marginBottom: 20,
-    gap: 8,
+    marginBottom: 18,
+    gap: 6,
   },
   label: {
-    color: "#94a3b8",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.5,
+    color: "#94A3B8",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.5,
     textTransform: "uppercase",
-    paddingLeft: 4,
-  },
+    paddingLeft: 2,
+    transition: "color 0.2s ease",
+  } as any,
   input: {
-    color: "#f8fafc",
-    borderRadius: 14,
+    color: "#F8FAFC",
+    borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 13,
     fontSize: 14,
     fontWeight: "500",
     borderWidth: 1,
     outlineStyle: "none",
-    transition: "all 0.25s ease-in-out",
+    transition: "all 0.2s ease",
   } as any,
   inputBlur: {
-    backgroundColor: "rgba(2, 6, 23, 0.4)",
-    borderColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   inputFocused: {
-    backgroundColor: "rgba(2, 6, 23, 0.7)",
-    borderColor: "#6366f1",
-  },
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: "#6366F1",
+    boxShadow: "0 0 12px rgba(99, 102, 241, 0.2)",
+  } as any,
   button: {
-    paddingVertical: 14,
+    paddingVertical: 13,
     paddingHorizontal: 24,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "transparent",
-    transition: "all 0.2s ease-in-out",
+    transition: "all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)",
   } as any,
   btnPrimary: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#4F46E5",
   },
   btnSecondary: {
-    backgroundColor: "rgba(30, 41, 59, 0.5)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
     borderColor: "rgba(255, 255, 255, 0.08)",
   },
   btnDanger: {
-    backgroundColor: "rgba(239, 68, 68, 0.2)",
-    borderColor: "rgba(239, 68, 68, 0.3)",
+    backgroundColor: "#EF4444",
   },
   btnSuccess: {
-    backgroundColor: "rgba(16, 185, 129, 0.2)",
-    borderColor: "rgba(16, 185, 129, 0.3)",
+    backgroundColor: "#059669",
   },
   btnWarning: {
-    backgroundColor: "rgba(245, 158, 11, 0.2)",
-    borderColor: "rgba(245, 158, 11, 0.3)",
+    backgroundColor: "#D97706",
   },
   buttonText: {
     fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 0.5,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
   badge: {
     alignSelf: "flex-start",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderWidth: 1,
-  },
-  badgeSuccess: {
-    backgroundColor: "rgba(16, 185, 129, 0.08)",
-    borderColor: "rgba(16, 185, 129, 0.2)",
-  },
-  badgeWarning: {
-    backgroundColor: "rgba(245, 158, 11, 0.08)",
-    borderColor: "rgba(245, 158, 11, 0.2)",
-  },
-  badgeInfo: {
-    backgroundColor: "rgba(99, 102, 241, 0.08)",
-    borderColor: "rgba(99, 102, 241, 0.2)",
   },
   badgeText: {
     fontSize: 10,
-    fontWeight: "900",
+    fontWeight: "800",
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
   statCard: {
     flex: 1,
-    minWidth: 220,
+    minWidth: 200,
     position: "relative",
     overflow: "hidden",
   },
   statLabel: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.5,
+    fontWeight: "700",
+    letterSpacing: 1,
     textTransform: "uppercase",
   },
   statValue: {
-    color: "#ffffff",
-    fontSize: 36,
+    color: "#F8FAFC",
+    fontSize: 32,
     fontWeight: "900",
-    marginTop: 12,
+    marginTop: 10,
     letterSpacing: -1,
   },
   statDecor: {
     position: "absolute",
-    right: -20,
-    bottom: -20,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(99, 102, 241, 0.04)",
+    right: -16,
+    bottom: -16,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     zIndex: -1,
   },
 });

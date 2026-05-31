@@ -50,7 +50,7 @@ CREATE TABLE `feedback_items` (
   `log_id` bigint UNSIGNED NOT NULL,
   `content` text NOT NULL,
   `category` enum('Minor','Major') NOT NULL,
-  `status` enum('Fixed','Pending') NOT NULL DEFAULT 'Pending',
+  `status` enum('Fixed','Pending','Validated') NOT NULL DEFAULT 'Pending',
   `created_at` datetime(3) DEFAULT NULL,
   `updated_at` datetime(3) DEFAULT NULL,
   `deleted_at` datetime(3) DEFAULT NULL
@@ -127,8 +127,8 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `email`, `password`, `role`, `created_at`, `updated_at`, `deleted_at`) VALUES
-(5, 'dosen1@university.ac.id', '', 'lecturer', '2026-04-21 17:37:12.802', '2026-04-21 17:37:12.802', NULL),
-(6, 'mhs1@university.ac.id', '', 'student', '2026-04-21 17:39:42.318', '2026-04-21 17:39:42.318', NULL);
+(5, 'dosen1@university.ac.id', '$2a$10$wNnQd4l8V6oT05pWz2bW7uxjH9s5.pA0VzQyL7U1T3b6Vd7E9S1iG', 'lecturer', '2026-04-21 17:37:12.802', '2026-04-21 17:37:12.802', NULL),
+(6, 'mhs1@university.ac.id', '$2a$10$wNnQd4l8V6oT05pWz2bW7uxjH9s5.pA0VzQyL7U1T3b6Vd7E9S1iG', 'student', '2026-04-21 17:39:42.318', '2026-04-21 17:39:42.318', NULL);
 
 --
 -- Indexes for dumped tables

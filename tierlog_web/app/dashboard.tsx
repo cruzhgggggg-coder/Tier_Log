@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform } from "react-native";
+import { StyleSheet, Text, View, Pressable, Platform } from "react-native";
 import { router } from "expo-router";
 
 import { NavBar } from "@/src/components/NavBar";
@@ -19,7 +19,7 @@ import {
 import { getGlassStyle, getGlowStyle } from "@/src/components/icons";
 
 export default function DashboardScreen() {
-  const { api, accessToken, user } = useAuth();
+  const { api, accessToken, user, booting } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [error, setError] = useState("");
   
@@ -30,12 +30,13 @@ export default function DashboardScreen() {
     }
   }, [user?.role]);
 
-  // Lecturer specific states (kept for graceful fallback)
   const [students, setStudents] = useState<StudentProfile[]>([]);
   const [consultations, setConsultations] = useState<ConsultationLog[]>([]);
   const [hoveredCard, setHoveredCard] = useState<number | null>(null);
 
   useEffect(() => {
+    if (booting || !accessToken) return;
+
     api<DashboardStats>("/dashboard/stats")
       .then(setStats)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load stats"));
@@ -48,19 +49,23 @@ export default function DashboardScreen() {
       api<{ data: ConsultationLog[] }>("/lecturer/consultations")
         .then((res) => setConsultations(res.data))
         .catch(console.error);
+    } else if (user?.role === "student") {
+      api<{ data: ConsultationLog[] }>("/consultations")
+        .then((res) => setConsultations(res.data))
+        .catch(console.error);
     }
-  }, [api, user?.role]);
+  }, [api, booting, accessToken, user?.role]);
 
-  // Real-time sync via WebSocket for Lecturer Dashboard (laravel Reverb/Echo style)
+  // Real-time sync via WebSocket for both Student and Lecturer Dashboard (laravel Reverb/Echo style)
   useEffect(() => {
-    if (!accessToken || consultations.length === 0 || user?.role !== "lecturer") {
+    if (!accessToken || consultations.length === 0) {
       return;
     }
 
     const socket = new WebSocket(`${API_URL.replace("http", "ws")}/ws?token=${accessToken}`);
     
     socket.onopen = () => {
-      // Subscribe to all supervised student consultation rooms
+      // Subscribe to all consultation rooms
       consultations.forEach((log) => {
         socket.send(JSON.stringify({ action: "subscribe", room: `consultation.${log.id}` }));
       });
@@ -79,7 +84,7 @@ export default function DashboardScreen() {
                     ...log,
                     feedback_items: log.feedback_items.map((item) =>
                       item.id === payload.data.feedback_id
-                        ? { ...item, status: payload.data.status }
+                        ? { ...item, status: payload.data.status, category: payload.data.category ?? item.category }
                         : item
                     ),
                   }
@@ -99,21 +104,20 @@ export default function DashboardScreen() {
     return () => {
       socket.close();
     };
-  }, [accessToken, consultations.length, user?.role, api]);
+  }, [accessToken, consultations.length, api]);
 
   // Helper to determine student's pending items
   const getStudentStatus = (studentId: number) => {
     const studentLogs = consultations.filter(c => c.student_id === studentId);
     if (!studentLogs.length) return "NO SUBMISSIONS";
     
-    // Check if there are any pending feedback items across all logs of this student
     let hasPending = false;
     studentLogs.forEach(log => {
       if (log.feedback_items?.some(item => item.status === "Pending" || item.status === "Fixed")) {
         hasPending = true;
       }
     });
-    return hasPending ? "NEW DRAFTS" : "ALL CLEAR";
+    return hasPending ? "NEW SUBMISSIONS" : "ALL CLEAR";
   };
 
   return (
@@ -121,105 +125,107 @@ export default function DashboardScreen() {
       <Page>
         <NavBar />
         
-        {/* Dynamic header customized per role */}
         <Heading
-          title={user?.role === "lecturer" ? "Lecturer Portal" : "Student Dashboard"}
+          title={user?.role === "lecturer" ? "Academic Evaluation Portal" : "Academic Progress Dashboard"}
           subtitle={
             user?.role === "lecturer" 
-              ? "Centralized management of active student guidance, feedback validation, and thesis progress tracking."
-              : "Synchronize guidance metrics, verify draft statuses, and consult with the AI academic assistant."
+              ? "Centralized oversight of student bimbingan logs, revision draft validations, and thesis milestones tracking."
+              : "Monitor thesis draft consultations progress, manage assigned revision tasks, and review formal advisings."
           }
         />
 
         {error ? (
           <Card style={styles.errorCard}>
-            <AlertIcon color="#ef4444" size={20} />
+            <AlertIcon color="#DC2626" size={20} />
             <Text style={styles.errorText}>{error}</Text>
           </Card>
         ) : null}
 
-        {/* 4-Column Grid Metric stats (customized per role) */}
+        {/* 4-Column Grid Metric stats */}
         <View style={styles.statsGrid}>
           {user?.role === "student" ? (
             <>
               <StatCard 
                 label="Approved Sessions" 
                 value={stats ? Math.max(0, stats.total_consultations - (stats.pending_feedback > 0 ? 1 : 0)) : "0"} 
-                glowColor="#10b981"
+                glowColor="#059669"
               />
               <StatCard 
                 label="Pending Revisions" 
                 value={stats?.pending_feedback ?? "0"} 
-                glowColor="#ef4444"
+                glowColor="#DC2626"
               />
               <StatCard 
                 label="Completion Rate" 
                 value={stats ? `${stats.completion_rate}%` : "0%"} 
-                glowColor="#f59e0b"
+                glowColor="#6366F1"
               />
               <StatCard 
-                label="Total Drafts" 
+                label="Total Document Drafts" 
                 value={stats?.draft_count ?? "0"} 
-                glowColor="#6366f1"
+                glowColor="#4F46E5"
               />
             </>
           ) : (
             <>
               <StatCard 
-                label="Total Sessions" 
+                label="Total Consultations" 
                 value={stats?.total_consultations ?? "0"} 
-                glowColor="#6366f1"
+                glowColor="#4F46E5"
               />
               <StatCard 
                 label="Validation Queue" 
                 value={stats?.pending_feedback ?? "0"} 
-                glowColor="#f59e0b"
+                glowColor="#D97706"
               />
               <StatCard 
                 label="Average Completion" 
                 value={stats ? `${stats.completion_rate}%` : "0%"} 
-                glowColor="#10b981"
+                glowColor="#6366F1"
               />
               <StatCard 
                 label="Active Students" 
                 value={stats?.student_count ?? "0"} 
-                glowColor="#06b6d4"
+                glowColor="#3B82F6"
               />
             </>
           )}
         </View>
 
         {user?.role === "student" ? (
-          /* Student View: Core Quest Log Card */
+          /* Student View: Core Task Log Card */
           <Card style={styles.questCard}>
             <View style={styles.questHeader}>
-              <AIGatewayIcon color="#6366f1" size={20} />
-              <Text style={styles.questTitle}>Active Logbook & Revision Tasks</Text>
+              <AIGatewayIcon color="#4F46E5" size={20} />
+              <Text style={styles.questTitle}>Active Revision Tasks</Text>
             </View>
             
             <View style={styles.questList}>
               {stats?.upcoming_quests?.length ? (
                 stats.upcoming_quests.map((item) => {
-                  const isCompleted = item.status.toLowerCase().includes("fixed") || item.status.toLowerCase().includes("validated");
-                  const isPending = item.status.toLowerCase().includes("pending");
+                  const isValidated = item.status.toLowerCase().includes("validated");
+                  const isFixed = item.status.toLowerCase().includes("fixed");
 
                   return (
                     <View key={item.id} style={styles.questItem}>
                       <View style={styles.questMeta}>
-                        <Badge text={`${item.category} • ${item.status}`} />
+                          <Badge 
+                          text={`${item.category} • ${isFixed ? "SUBMITTED FOR REVIEW" : isValidated ? "APPROVED & VALIDATED" : "PENDING REVISION"}`} 
+                          color={isValidated ? "#059669" : isFixed ? "#0891B2" : "#D97706"} 
+                        />
                         <View style={styles.iconIndicator}>
-                          {isCompleted ? (
-                            <CheckCircleIcon color="#10b981" size={16} />
-                          ) : isPending ? (
-                            <ClockIcon color="#f59e0b" size={16} />
+                          {isValidated ? (
+                            <CheckCircleIcon color="#059669" size={16} />
+                          ) : isFixed ? (
+                            <ClockIcon color="#0891B2" size={16} />
                           ) : (
-                            <AlertIcon color="#6366f1" size={16} />
+                            <ClockIcon color="#D97706" size={16} />
                           )}
                           <Text style={[
                             styles.indicatorText,
-                            isCompleted ? { color: "#10b981" } : isPending ? { color: "#f59e0b" } : { color: "#6366f1" }
+                            isValidated ? { color: "#059669" } : isFixed ? { color: "#0891B2" } : { color: "#D97706" }
                           ]}>
-                            {item.status.toUpperCase()}
+                            {isValidated ? "APPROVED & VALIDATED" : isFixed ? "Awaiting Validation" : "Pending Execution"}
                           </Text>
                         </View>
                       </View>
@@ -229,8 +235,8 @@ export default function DashboardScreen() {
                 })
               ) : (
                 <View style={styles.emptyContainer}>
-                  <CheckCircleIcon color="#10b981" size={24} />
-                  <Text style={styles.emptyText}>All tasks completed. No pending revisions at this time.</Text>
+                  <CheckCircleIcon color="#0F766E" size={24} />
+                  <Text style={styles.emptyText}>No active revision tasks at this time.</Text>
                 </View>
               )}
             </View>
@@ -239,15 +245,15 @@ export default function DashboardScreen() {
           /* Lecturer View: Supervised Students modular grid */
           <Card style={styles.questCard}>
             <View style={styles.questHeader}>
-              <ProfileIcon color="#06b6d4" size={20} />
-              <Text style={styles.questTitle}>Active Advised Students</Text>
+              <ProfileIcon color="#3B82F6" size={20} />
+              <Text style={styles.questTitle}>Active Supervised Students</Text>
             </View>
  
             <View style={styles.studentGrid}>
               {students.map((student) => {
                 const status = getStudentStatus(student.id);
                 const isHovered = hoveredCard === student.id;
-                const statusColor = status === "NEW DRAFTS" ? "#06b6d4" : status === "ALL CLEAR" ? "#10b981" : "#64748b";
+                const statusColor = status === "NEW SUBMISSIONS" ? "#0891B2" : status === "ALL CLEAR" ? "#059669" : "#6366F1";
 
                 return (
                   <Pressable
@@ -265,18 +271,18 @@ export default function DashboardScreen() {
                   >
                     <View style={styles.studentHeader}>
                       <View style={styles.avatarWrap}>
-                        <ProfileIcon color="#94a3b8" size={24} />
+                        <ProfileIcon color="#6366F1" size={20} />
                       </View>
                       <Badge text={status} color={statusColor} />
                     </View>
 
                     <Text style={styles.studentName}>{student.name}</Text>
-                    <Text style={styles.studentNim}>NIM. {student.nim} • {student.prodi}</Text>
+                    <Text style={styles.studentNim}>ID. {student.nim} • {student.prodi}</Text>
                     
                     <View style={styles.thesisContainer}>
-                      <ArchiveIcon color="#475569" size={14} style={{ marginTop: 2 }} />
+                      <ArchiveIcon color="#94A3B8" size={14} style={{ marginTop: 2 }} />
                       <Text style={styles.studentThesis} numberOfLines={2}>
-                        {student.thesis_title || "No thesis title uploaded yet."}
+                        {student.thesis_title || "Research title not registered yet."}
                       </Text>
                     </View>
                   </Pressable>
@@ -285,8 +291,8 @@ export default function DashboardScreen() {
 
               {!students.length && (
                 <View style={styles.emptyContainer}>
-                  <ProfileIcon color="#475569" size={32} />
-                  <Text style={styles.emptyText}>No active students found under your supervision.</Text>
+                  <ProfileIcon color="#6366F1" size={32} />
+                  <Text style={styles.emptyText}>No supervised students currently assigned.</Text>
                 </View>
               )}
             </View>
@@ -302,12 +308,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
-    borderColor: "rgba(239, 68, 68, 0.2)",
+    backgroundColor: "rgba(239, 68, 68, 0.05)",
+    borderColor: "rgba(239, 68, 68, 0.15)",
     padding: 16,
   },
   errorText: {
-    color: "#fca5a5",
+    color: "#DC2626",
     fontSize: 14,
     fontWeight: "600",
   },
@@ -325,12 +331,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     paddingBottom: 16,
     marginBottom: 24,
   },
   questTitle: {
-    color: "#ffffff",
+    color: "#F8FAFC",
     fontSize: 18,
     fontWeight: "900",
     letterSpacing: -0.5,
@@ -339,14 +345,13 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   questItem: {
-    backgroundColor: "rgba(2, 6, 23, 0.25)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     borderRadius: 16,
     padding: 18,
     gap: 12,
-    transition: "all 0.2s ease-in-out",
-  } as any,
+  },
   questMeta: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -360,12 +365,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   indicatorText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
     letterSpacing: 1,
   },
   questContent: {
-    color: "#cbd5e1",
+    color: "#CBD5E1",
     fontSize: 14,
     lineHeight: 22,
     fontWeight: "500",
@@ -378,7 +383,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyText: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 14,
     fontWeight: "600",
     textAlign: "center",
@@ -395,10 +400,9 @@ const styles = StyleSheet.create({
     maxWidth: "48%",
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.02)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     gap: 14,
     padding: 22,
-    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
   } as any,
   studentHeader: {
     flexDirection: "row",
@@ -406,23 +410,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   avatarWrap: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     borderRadius: 99,
-    backgroundColor: "rgba(99, 102, 241, 0.08)",
+    backgroundColor: "rgba(99, 102, 241, 0.10)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(99, 102, 241, 0.15)",
+    borderColor: "rgba(99, 102, 241, 0.25)",
   },
   studentName: {
-    color: "#ffffff",
+    color: "#F8FAFC",
     fontSize: 16,
     fontWeight: "800",
     letterSpacing: -0.2,
   },
   studentNim: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 12,
     fontWeight: "600",
     marginTop: -8,
@@ -431,14 +435,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     alignItems: "flex-start",
-    backgroundColor: "rgba(2, 6, 23, 0.3)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.02)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
   },
   studentThesis: {
-    color: "#cbd5e1",
+    color: "#94A3B8",
     fontSize: 12,
     lineHeight: 18,
     flex: 1,

@@ -33,7 +33,7 @@ func jwtSecret() []byte {
 }
 
 func accessTTL() time.Duration {
-	return 15 * time.Minute
+	return 2 * time.Hour
 }
 
 func refreshTTL() time.Duration {

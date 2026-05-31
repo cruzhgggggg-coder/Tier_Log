@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Animated, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { NavBar } from "@/src/components/NavBar";
 import { RequireAuth } from "@/src/components/RequireAuth";
@@ -25,22 +25,127 @@ type ChatMessage = {
   content: string;
 };
 
+type TypingIndicatorProps = {
+  label?: string;
+  color?: string;
+};
+
+// --- Beautiful Pulsating typing animation component for AI Oracle & Advisor chat ---
+const TypingIndicator = ({ label = "AI THINKING", color = "#7C3AED" }: TypingIndicatorProps) => {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const createAnimation = (dot: Animated.Value, delay: number) => {
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, {
+            toValue: 1,
+            duration: 350,
+            useNativeDriver: Platform.OS !== "web",
+          }),
+          Animated.timing(dot, {
+            toValue: 0,
+            duration: 350,
+            useNativeDriver: Platform.OS !== "web",
+          }),
+        ])
+      );
+    };
+
+    const anim1 = createAnimation(dot1, 0);
+    const anim2 = createAnimation(dot2, 100);
+    const anim3 = createAnimation(dot3, 200);
+
+    anim1.start();
+    anim2.start();
+    anim3.start();
+
+    return () => {
+      anim1.stop();
+      anim2.stop();
+      anim3.stop();
+    };
+  }, [dot1, dot2, dot3]);
+
+  const getInterpolatedStyle = (dot: Animated.Value) => {
+    return {
+      opacity: dot.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.3, 1],
+      }),
+      transform: [
+        {
+          translateY: dot.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, -3],
+          }),
+        },
+      ],
+    };
+  };
+
+  return (
+    <View style={[
+      styles.chatBubble, 
+      styles.chatBubbleAI, 
+      getGlowStyle(color, 0.05) as any, 
+      { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 12, paddingHorizontal: 14 }
+    ]}>
+      <Text style={[styles.chatRole, { color: color, marginRight: 4, letterSpacing: 0.8 }]}>{label}</Text>
+      <Animated.View style={[{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color }, getInterpolatedStyle(dot1)]} />
+      <Animated.View style={[{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color }, getInterpolatedStyle(dot2)]} />
+      <Animated.View style={[{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color }, getInterpolatedStyle(dot3)]} />
+    </View>
+  );
+};
+
 export default function ConsultationsScreen() {
-  const { api, accessToken, user } = useAuth();
+  const { api, accessToken, user, booting } = useAuth();
   const [logs, setLogs] = useState<ConsultationLog[]>([]);
   const [selectedLog, setSelectedLog] = useState<ConsultationLog | null>(null);
+  
+  // Floating Toast Notifications State
+  const [toasts, setToasts] = useState<Array<{ id: string; title: string; message: string; type: "chat" | "revision" | "system"; animatedValue: Animated.Value }>>([]);
+
+  const showToast = (title: string, message: string, type: "chat" | "revision" | "system") => {
+    const id = Math.random().toString(36).substring(7);
+    const anim = new Animated.Value(0);
+    
+    setToasts(prev => [...prev, { id, title, message, type, animatedValue: anim }]);
+    
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 350,
+      useNativeDriver: Platform.OS !== "web",
+    }).start();
+    
+    setTimeout(() => {
+      Animated.timing(anim, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: Platform.OS !== "web",
+      }).start(() => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+      });
+    }, 4500);
+  };
   
   // File upload states for Student
   const [paperFile, setPaperFile] = useState<File | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [annotationFiles, setAnnotationFiles] = useState<File[]>([]);
   const [studentTab, setStudentTab] = useState<"feedback" | "transcript" | "annotations" | "drafts">("feedback");
+  const [showArchiveDropdown, setShowArchiveDropdown] = useState(false);
   
   // Chat States for Student
   const [chatQuery, setChatQuery] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [chatMode, setChatMode] = useState<"oracle" | "advisor">("oracle");
   const [directMessages, setDirectMessages] = useState<any[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
   
   // Loading & error alerts
   const [loading, setLoading] = useState(false);
@@ -59,6 +164,26 @@ export default function ConsultationsScreen() {
   const [audioProgress, setAudioProgress] = useState(0.24); // Simulated progress bar starting point
   const [audioTime, setAudioTime] = useState("02:14");
 
+  // Helper to get chronological bimbingan session number for a student
+  const getMeetingNumber = (logId: number, studentId: number) => {
+    const studentLogs = logs
+      .filter((l) => l.student_id === studentId)
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    const index = studentLogs.findIndex((l) => l.id === logId);
+    return index !== -1 ? index + 1 : 1;
+  };
+
+  // Helper to format session dates nicely
+  const formatSessionDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  };
+
   const appendChat = (message: ChatMessage) => {
     setChatHistory((current) => {
       const last = current[current.length - 1];
@@ -70,7 +195,6 @@ export default function ConsultationsScreen() {
   };
 
   const loadLogs = async () => {
-    // If lecturer, we fetch the same list but styled from supervised students
     const response = await api<{ data: ConsultationLog[] }>("/consultations");
     setLogs(response.data);
     if (!selectedLog && response.data.length > 0) {
@@ -79,10 +203,12 @@ export default function ConsultationsScreen() {
   };
 
   useEffect(() => {
+    if (booting || !accessToken) return;
+
     void loadLogs().catch((err) =>
       setError(err instanceof Error ? err.message : "Failed to load consultations")
     );
-  }, []);
+  }, [api, booting, accessToken]);
 
   const loadDirectMessages = async (logId: number) => {
     try {
@@ -93,12 +219,26 @@ export default function ConsultationsScreen() {
     }
   };
 
+  const loadAIChats = async (logId: number) => {
+    try {
+      const res = await api<{ data: any[] }>(`/consultations/${logId}/ai-chats`);
+      const mapped = res.data.map((m: any) => ({
+        role: m.role,
+        content: m.content
+      }));
+      setChatHistory(mapped);
+    } catch (err) {
+      console.error("Failed to load AI chats:", err);
+    }
+  };
+
   useEffect(() => {
     if (!accessToken || !selectedLog) {
       return;
     }
 
     void loadDirectMessages(selectedLog.id);
+    void loadAIChats(selectedLog.id);
 
     const socket = new WebSocket(`${API_URL.replace("http", "ws")}/ws?token=${accessToken}`);
     socketRef.current = socket;
@@ -124,6 +264,12 @@ export default function ConsultationsScreen() {
                 }
           )
         );
+        const status = payload.data.status;
+        const msgTitle = status === "Validated" ? "Revision Approved! 🎉" : "Revision Status Updated";
+        const msgText = status === "Validated" 
+          ? "A revision feedback has been successfully validated and approved by your advisor."
+          : `A revision feedback status was changed to "${status}".`;
+        showToast(msgTitle, msgText, "revision");
       }
       if (payload.event === "chat.message") {
         appendChat({ role: payload.data.role, content: payload.data.content });
@@ -133,6 +279,9 @@ export default function ConsultationsScreen() {
           if (current.some((m) => m.id === payload.data.id)) return current;
           return [...current, payload.data];
         });
+        if (payload.data.sender_role === "lecturer") {
+          showToast("New Message from Advisor", payload.data.content, "chat");
+        }
       }
     };
 
@@ -176,7 +325,6 @@ export default function ConsultationsScreen() {
       const body = new FormData();
       body.append("paper", paperFile);
       body.append("audio", audioFile);
-      // Append each annotation file under the key "annotations"
       annotationFiles.forEach((f) => body.append("annotations", f));
       await api("/consultations", { method: "POST", body, headers: {} });
       setPaperFile(null);
@@ -191,12 +339,14 @@ export default function ConsultationsScreen() {
   };
 
   const sendChat = async () => {
-    if (!selected || !chatQuery.trim()) {
+    if (!selected || !chatQuery.trim() || chatLoading) {
       return;
     }
 
     const draft = chatQuery;
     setChatQuery("");
+    setChatLoading(true);
+    setError("");
 
     if (chatMode === "oracle") {
       appendChat({ role: "user", content: draft });
@@ -206,11 +356,15 @@ export default function ConsultationsScreen() {
           body: JSON.stringify({ log_id: selected.id, query: draft }),
         });
         appendChat({ role: "ai", content: response.ai_response });
+        showToast("AI Oracle Response Ready", "The AI has compiled a response for your revision guidelines.", "system");
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Chat failed");
+        const errMsg = err instanceof Error ? err.message : "AI Oracle failed to respond";
+        setError(`AI Oracle Error: ${errMsg}. Please verify that your API Key is configured in your profile.`);
+        appendChat({ role: "ai", content: `AI Oracle connection failed: ${errMsg}. Please verify your API Key in your profile settings.` });
+      } finally {
+        setChatLoading(false);
       }
     } else {
-      // Direct message to Lecturer
       try {
         const response = await api<{ data: any }>(`/consultations/${selected.id}/direct-messages`, {
           method: "POST",
@@ -222,15 +376,19 @@ export default function ConsultationsScreen() {
         });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to send message to advisor");
+      } finally {
+        setChatLoading(false);
       }
     }
   };
 
   const handleQuickRevisi = async (content: string) => {
-    if (!selected) return;
+    if (!selected || chatLoading) return;
     const prompt = `Provide concrete solutions and textual revision improvements for the following feedback item:\n"${content}"`;
     
     appendChat({ role: "user", content: prompt });
+    setChatLoading(true);
+    setError("");
     try {
       const response = await api<{ ai_response: string }>("/consultations/chat", {
         method: "POST",
@@ -238,7 +396,11 @@ export default function ConsultationsScreen() {
       });
       appendChat({ role: "ai", content: response.ai_response });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Quick AI Revision failed");
+      const errMsg = err instanceof Error ? err.message : "Quick AI Revision failed";
+      setError(`Quick AI Revision Error: ${errMsg}. Please verify that your API Key is configured in your profile.`);
+      appendChat({ role: "ai", content: `AI Quick Revision processing failed: ${errMsg}. Please check your API Key in your profile settings.` });
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -265,7 +427,6 @@ export default function ConsultationsScreen() {
         body: JSON.stringify({ status, log_id: selected?.id }),
       });
       await loadLogs();
-      // Keep the current selection in right panel in sync
       if (selectedFeedbackItem && selectedFeedbackItem.id === item.id) {
         setSelectedFeedbackItem(prev => prev ? { ...prev, status } : null);
       }
@@ -274,12 +435,11 @@ export default function ConsultationsScreen() {
     }
   };
 
-  // Simulated handlers for Lecturer Center actions
   const triggerTranscription = () => {
     setIsTranscribing(true);
     setTimeout(() => {
       setIsTranscribing(false);
-      alert("Transkrip AI berhasil diproses ulang dan disinkronkan.");
+      alert("AI transcript has been successfully reprocessed and synchronized.");
     }, 2000);
   };
 
@@ -287,7 +447,7 @@ export default function ConsultationsScreen() {
     setIsAnalyzing(true);
     setTimeout(() => {
       setIsAnalyzing(false);
-      alert("Metrik Butir Feedback & Analisis Konsistensi Versi diperbarui.");
+      alert("Feedback metrics and version consistency analysis have been updated.");
     }, 2000);
   };
 
@@ -316,14 +476,14 @@ export default function ConsultationsScreen() {
           title="Consultation Workspace"
           subtitle={
             user?.role === "lecturer"
-              ? "Lecturer Workspace - Asymmetric three-panel terminal for draft auditing, transcript evaluation, and revision verification."
-              : "Student Workspace - Upload revision documents, review advisor feedback, and consult the AI academic assistant."
+              ? "Supervisor Workspace - Auditing draft thesis, evaluating audio transcripts, and verifying revision status."
+              : "Student Workspace - Upload manuscripts, evaluate advisor feedback, and consult the AI Oracle for revision guidelines."
           }
         />
 
         {error ? (
           <Card style={styles.errorCard}>
-            <AlertIcon color="#ef4444" size={20} />
+            <AlertIcon color="#DC2626" size={20} />
             <Text style={styles.errorText}>{error}</Text>
           </Card>
         ) : null}
@@ -338,7 +498,7 @@ export default function ConsultationsScreen() {
               {/* UPLOAD DRAFT CARD */}
               <Card style={{ padding: 20, width: "100%" }}>
                 <View style={styles.panelHeader}>
-                  <CloudUploadIcon color="#6366f1" size={18} />
+                  <CloudUploadIcon color="#4F46E5" size={18} />
                   <Text style={[styles.panelTitle, { fontSize: 15 }]}>Upload Draft</Text>
                 </View>
                 
@@ -346,7 +506,6 @@ export default function ConsultationsScreen() {
                   <WebFileInput label="Select Manuscript (.docx)" accept=".docx" onFileSelect={setPaperFile} />
                   <WebFileInput label="Select Recording (.mp3/.wav)" accept="audio/*" onFileSelect={setAudioFile} />
                   
-                  {/* Annotation files — optional */}
                   <MultiImageInput
                     label="Lecturer Revisions & Annotations (Optional)"
                     files={annotationFiles}
@@ -363,66 +522,118 @@ export default function ConsultationsScreen() {
                 </View>
               </Card>
 
-              {/* ARCHIVE CARD */}
-              <Card style={{ flex: 1, padding: 20, width: "100%" }}>
-                <View style={styles.panelHeader}>
-                  <ArchiveIcon color="#06b6d4" size={18} />
-                  <Text style={[styles.panelTitle, { fontSize: 15 }]}>Archive</Text>
-                </View>
-
-                <ScrollView 
-                  showsVerticalScrollIndicator={true}
-                  style={styles.sessionScroll}
-                  {...({ className: "ultra-thin-scroll" } as any)}
-                  contentContainerStyle={{ gap: 10 }}
+              {/* COMPACT FLOATING ARCHIVE DROPDOWN */}
+              <View style={{ position: "relative", zIndex: 99, width: "100%" }}>
+                <Pressable
+                  onPress={() => setShowArchiveDropdown(!showArchiveDropdown)}
+                  style={({ pressed }) => [
+                    getGlassStyle(0.12, 12) as any,
+                    {
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingHorizontal: 16,
+                      paddingVertical: 14,
+                      borderWidth: 1,
+                      borderColor: "rgba(255, 255, 255, 0.06)",
+                      backgroundColor: "rgba(30, 41, 59, 0.5)",
+                      transform: [{ scale: pressed ? 0.98 : 1 }],
+                    }
+                  ]}
                 >
-                  {logs.map((log) => {
-                    const isSelected = selected?.id === log.id;
-                    const dateStr = new Date(log.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-                    return (
-                      <Pressable
-                        key={log.id}
-                        onPress={() => setSelectedLog(log)}
-                        style={({ pressed }) => [
-                          styles.sessionItem,
-                          isSelected ? styles.sessionItemActive : styles.sessionItemInactive,
-                          {
-                            transform: [{ scale: pressed ? 0.98 : 1 }],
-                          },
-                        ]}
-                      >
-                        <View style={styles.sessionStatusRow}>
-                          <Badge text={dateStr} />
-                          <View style={[styles.activeIndicator, isSelected && styles.activeIndicatorGlow]} />
-                        </View>
-                        <Text
-                          style={[
-                            styles.sessionFile,
-                            isSelected ? { color: "#ffffff" } : { color: "#cbd5e1" },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {log.paper_filename}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <ArchiveIcon color="#0891B2" size={16} />
+                    <Text style={{ color: "#F8FAFC", fontSize: 13, fontWeight: "800" }} numberOfLines={1}>
+                      {selected 
+                        ? `Session: ${new Date(selected.created_at).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}`
+                        : "Select Consultation Session"}
+                    </Text>
+                  </View>
+                  <Text style={{ color: "#0891B2", fontSize: 11, fontWeight: "900" }}>
+                    {showArchiveDropdown ? "▲" : "▼"}
+                  </Text>
+                </Pressable>
+
+                {showArchiveDropdown && (
+                  <Card
+                    style={[
+                      getGlassStyle(0.2, 14) as any,
+                      {
+                        position: "absolute",
+                        bottom: 56, // Opens upwards
+                        left: 0,
+                        right: 0,
+                        maxHeight: 220,
+                        padding: 10,
+                        borderWidth: 1,
+                        borderColor: "rgba(255, 255, 255, 0.06)",
+                        backgroundColor: "rgba(15, 23, 42, 0.95)",
+                        zIndex: 99999,
+                        shadowColor: "#000",
+                        shadowOffset: { width: 0, height: 10 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 15,
+                      }
+                    ]}
+                  >
+                    <ScrollView
+                      showsVerticalScrollIndicator={true}
+                      {...({ className: "ultra-thin-scroll" } as any)}
+                      contentContainerStyle={{ gap: 8 }}
+                    >
+                      {logs.map((log) => {
+                        const isSelected = selected?.id === log.id;
+                        const dateStr = new Date(log.created_at).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+                        return (
+                          <Pressable
+                            key={log.id}
+                            onPress={() => {
+                              setSelectedLog(log);
+                              setShowArchiveDropdown(false);
+                            }}
+                            style={({ pressed }) => [
+                              {
+                                flexDirection: "row",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                padding: 10,
+                                borderRadius: 8,
+                                backgroundColor: isSelected ? "rgba(8, 145, 178, 0.08)" : "transparent",
+                                borderWidth: 1,
+                                borderColor: isSelected ? "rgba(8, 145, 178, 0.15)" : "transparent",
+                                transform: [{ scale: pressed ? 0.98 : 1 }]
+                              }
+                            ]}
+                          >
+                            <View style={{ flex: 1, gap: 2 }}>
+                              <Text style={{ color: isSelected ? "#ffffff" : "#CBD5E1", fontSize: 12, fontWeight: "800" }} numberOfLines={1}>
+                                {log.paper_filename}
+                              </Text>
+                              <Text style={{ color: "#94A3B8", fontSize: 10, fontWeight: "600" }}>
+                                {dateStr}
+                              </Text>
+                            </View>
+                            {isSelected && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#0891B2" }} />}
+                          </Pressable>
+                        );
+                      })}
+                      {!logs.length && (
+                        <Text style={{ color: "#94A3B8", fontSize: 12, textAlign: "center", paddingVertical: 12 }}>
+                          No drafts uploaded yet.
                         </Text>
-                      </Pressable>
-                    );
-                  })}
-                  {!logs.length && (
-                    <View style={styles.emptySessions}>
-                      <Text style={styles.emptySessionText}>No draft manuscripts uploaded yet.</Text>
-                    </View>
-                  )}
-                </ScrollView>
-              </Card>
+                      )}
+                    </ScrollView>
+                  </Card>
+                )}
+              </View>
             </View>
 
             {/* Center Panel: Feedback Stream & Transcript Tabs (35% width) */}
             <Card style={[styles.centerPanel, { flex: 1.4, height: 680 }]}>
               <View style={{ flex: 1, gap: 16 }}>
-                {/* Header with Title and Tabs switches */}
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.04)", paddingBottom: 14, flexWrap: "wrap", gap: 12 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderColor: "rgba(255, 255, 255, 0.08)", paddingBottom: 14, flexWrap: "wrap", gap: 12 }}>
                   <View style={{ gap: 4 }}>
-                    <Text style={[styles.panelTitle, { color: "#ffffff" }]}>Advisory Workspace</Text>
+                    <Text style={[styles.panelTitle, { color: "#F8FAFC" }]}>Advisory Workspace</Text>
                     {selected && (
                       <Pressable 
                         onPress={() => Platform.OS === "web" && window.open(`${API_URL}/storage/paper/${selected.paper_filename}`)}
@@ -430,68 +641,68 @@ export default function ConsultationsScreen() {
                           { flexDirection: "row", alignItems: "center", gap: 4, opacity: pressed ? 0.7 : 1 }
                         ]}
                       >
-                        <Text style={{ color: "#06b6d4", fontSize: 11, fontWeight: "700", textDecorationLine: "underline" }} numberOfLines={1}>
-                          📥 {selected.paper_filename}
+                        <Text style={{ color: "#14B8A6", fontSize: 11, fontWeight: "700", textDecorationLine: "underline" }} numberOfLines={1}>
+                          Download Manuscript: {selected.paper_filename}
                         </Text>
                       </Pressable>
                     )}
                   </View>
                   
                   {/* Tabs switch */}
-                  <View style={{ flexDirection: "row", gap: 6, backgroundColor: "rgba(2, 6, 23, 0.4)", borderRadius: 10, padding: 3, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)" }}>
+                  <View style={{ flexDirection: "row", gap: 4, backgroundColor: "rgba(255, 255, 255, 0.02)", borderRadius: 10, padding: 3, borderWidth: 1, borderColor: "rgba(255, 255, 255, 0.06)", flexWrap: "nowrap" }}>
                     <Pressable
                       onPress={() => setStudentTab("feedback")}
                       style={{
-                        paddingHorizontal: 12,
+                        paddingHorizontal: 8,
                         paddingVertical: 6,
                         borderRadius: 8,
-                        backgroundColor: studentTab === "feedback" ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                        backgroundColor: studentTab === "feedback" ? "rgba(99, 102, 241, 0.08)" : "transparent",
                         borderWidth: 1,
-                        borderColor: studentTab === "feedback" ? "rgba(99, 102, 241, 0.3)" : "transparent",
+                        borderColor: studentTab === "feedback" ? "rgba(99, 102, 241, 0.15)" : "transparent",
                       }}
                     >
-                      <Text style={{ color: studentTab === "feedback" ? "#ffffff" : "#64748b", fontSize: 11, fontWeight: "800" }}>FEEDBACK</Text>
+                      <Text style={{ color: studentTab === "feedback" ? "#6366F1" : "#94A3B8", fontSize: 9.8, fontWeight: "800" }}>FEEDBACK</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => setStudentTab("transcript")}
                       style={{
-                        paddingHorizontal: 12,
+                        paddingHorizontal: 8,
                         paddingVertical: 6,
                         borderRadius: 8,
-                        backgroundColor: studentTab === "transcript" ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                        backgroundColor: studentTab === "transcript" ? "rgba(99, 102, 241, 0.08)" : "transparent",
                         borderWidth: 1,
-                        borderColor: studentTab === "transcript" ? "rgba(99, 102, 241, 0.3)" : "transparent",
+                        borderColor: studentTab === "transcript" ? "rgba(99, 102, 241, 0.15)" : "transparent",
                       }}
                     >
-                      <Text style={{ color: studentTab === "transcript" ? "#ffffff" : "#64748b", fontSize: 11, fontWeight: "800" }}>TRANSCRIPT</Text>
+                      <Text style={{ color: studentTab === "transcript" ? "#6366F1" : "#94A3B8", fontSize: 9.8, fontWeight: "800" }}>TRANSCRIPT</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => setStudentTab("annotations")}
                       style={{
-                        paddingHorizontal: 12,
+                        paddingHorizontal: 8,
                         paddingVertical: 6,
                         borderRadius: 8,
-                        backgroundColor: studentTab === "annotations" ? "rgba(167, 139, 250, 0.15)" : "transparent",
+                        backgroundColor: studentTab === "annotations" ? "rgba(124, 58, 237, 0.08)" : "transparent",
                         borderWidth: 1,
-                        borderColor: studentTab === "annotations" ? "rgba(167, 139, 250, 0.3)" : "transparent",
+                        borderColor: studentTab === "annotations" ? "rgba(124, 58, 237, 0.15)" : "transparent",
                       }}
                     >
-                      <Text style={{ color: studentTab === "annotations" ? "#c4b5fd" : "#64748b", fontSize: 11, fontWeight: "800" }}>
+                      <Text style={{ color: studentTab === "annotations" ? "#7C3AED" : "#94A3B8", fontSize: 9.8, fontWeight: "800" }}>
                         ANNOTATIONS ({selected?.revision_annotations?.length ?? 0})
                       </Text>
                     </Pressable>
                     <Pressable
                       onPress={() => setStudentTab("drafts")}
                       style={{
-                        paddingHorizontal: 12,
+                        paddingHorizontal: 8,
                         paddingVertical: 6,
                         borderRadius: 8,
-                        backgroundColor: studentTab === "drafts" ? "rgba(6, 182, 212, 0.15)" : "transparent",
+                        backgroundColor: studentTab === "drafts" ? "rgba(8, 145, 178, 0.08)" : "transparent",
                         borderWidth: 1,
-                        borderColor: studentTab === "drafts" ? "rgba(6, 182, 212, 0.3)" : "transparent",
+                        borderColor: studentTab === "drafts" ? "rgba(8, 145, 178, 0.15)" : "transparent",
                       }}
                     >
-                      <Text style={{ color: studentTab === "drafts" ? "#06b6d4" : "#64748b", fontSize: 11, fontWeight: "800" }}>
+                      <Text style={{ color: studentTab === "drafts" ? "#14B8A6" : "#94A3B8", fontSize: 9.8, fontWeight: "800" }}>
                         DRAFTS ({logs.length})
                       </Text>
                     </Pressable>
@@ -514,7 +725,7 @@ export default function ConsultationsScreen() {
                           disabled={classifying}
                           style={({ pressed }) => [
                             getGlassStyle(0.12, 14) as any,
-                            getGlowStyle(classifying ? "#a78bfa" : "#06b6d4", 0.1) as any,
+                            getGlowStyle(classifying ? "#7C3AED" : "#0891B2", 0.08) as any,
                             {
                               flexDirection: "row",
                               alignItems: "center",
@@ -522,17 +733,17 @@ export default function ConsultationsScreen() {
                               gap: 10,
                               padding: 14,
                               borderWidth: 1,
-                              borderColor: "rgba(6, 182, 212, 0.25)",
+                              borderColor: "rgba(8, 145, 178, 0.2)",
                               marginBottom: 6,
                               transform: [{ scale: pressed ? 0.985 : 1 }],
                             }
                           ]}
                         >
-                          <AIGatewayIcon color={classifying ? "#a78bfa" : "#06b6d4"} size={16} />
-                          <Text style={{ color: "#ffffff", fontSize: 13, fontWeight: "900", letterSpacing: 0.2 }}>
+                          <AIGatewayIcon color={classifying ? "#7C3AED" : "#0891B2"} size={16} />
+                          <Text style={{ color: "#F8FAFC", fontSize: 13, fontWeight: "900", letterSpacing: 0.2 }}>
                             {classifying 
-                              ? "🔮 AI Oracle is organizing and sorting your notes..." 
-                              : "🔮 Sort & Analyze Revisions with AI Oracle"}
+                              ? "AI Oracle is organizing and sorting your notes..." 
+                              : "Sort & Analyze Revisions with AI Oracle"}
                           </Text>
                         </Pressable>
                       )}
@@ -554,11 +765,12 @@ export default function ConsultationsScreen() {
                             ]}
                           >
                             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                              <Badge text={item.category.toUpperCase()} color={item.category === "Major" ? "#ef4444" : "#6366f1"} />
+                              <Badge text={item.category.toUpperCase()} color={item.category === "Major" ? "#DC2626" : "#4F46E5"} />
                               
                               {/* Toggle Checkbox-style Badge */}
                               <Pressable
                                 onPress={() => void updateStatus(item, isFixed ? "Pending" : "Fixed")}
+                                disabled={isValidated}
                                 style={({ pressed }) => [
                                   {
                                     flexDirection: "row",
@@ -567,17 +779,18 @@ export default function ConsultationsScreen() {
                                     paddingHorizontal: 10,
                                     paddingVertical: 4,
                                     borderRadius: 6,
-                                    backgroundColor: isFixed ? "rgba(16, 185, 129, 0.15)" : isValidated ? "rgba(99, 102, 241, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                                    backgroundColor: isFixed ? "rgba(5, 150, 105, 0.06)" : isValidated ? "rgba(79, 70, 229, 0.06)" : "rgba(217, 119, 6, 0.06)",
                                     borderWidth: 1,
-                                    borderColor: isFixed ? "rgba(16, 185, 129, 0.3)" : isValidated ? "rgba(99, 102, 241, 0.3)" : "rgba(245, 158, 11, 0.3)",
-                                    transform: [{ scale: pressed ? 0.96 : 1 }],
+                                    borderColor: isFixed ? "rgba(5, 150, 105, 0.15)" : isValidated ? "rgba(79, 70, 229, 0.15)" : "rgba(217, 119, 6, 0.15)",
+                                    transform: [{ scale: pressed && !isValidated ? 0.96 : 1 }],
+                                    opacity: isValidated ? 0.8 : 1,
                                   }
                                 ]}
                               >
-                                <View style={{ width: 10, height: 10, borderRadius: 3, borderWidth: 1, borderColor: isFixed ? "#10b981" : isValidated ? "#6366f1" : "#f59e0b", backgroundColor: isFixed ? "#10b981" : "transparent", justifyContent: "center", alignItems: "center" }}>
+                                <View style={{ width: 10, height: 10, borderRadius: 3, borderWidth: 1, borderColor: isFixed ? "#059669" : isValidated ? "#4F46E5" : "#D97706", backgroundColor: isFixed ? "#059669" : "transparent", justifyContent: "center", alignItems: "center" }}>
                                   {isFixed && <Text style={{ color: "#ffffff", fontSize: 6, fontWeight: "900" }}>✓</Text>}
                                 </View>
-                                <Text style={{ color: isFixed ? "#10b981" : isValidated ? "#818cf8" : "#f59e0b", fontSize: 9, fontWeight: "900" }}>
+                                <Text style={{ color: isFixed ? "#059669" : isValidated ? "#4F46E5" : "#D97706", fontSize: 9, fontWeight: "900" }}>
                                   {item.status.toUpperCase()}
                                 </Text>
                               </Pressable>
@@ -597,13 +810,13 @@ export default function ConsultationsScreen() {
                                     paddingHorizontal: 12,
                                     paddingVertical: 6,
                                     borderWidth: 1,
-                                    borderColor: "rgba(139, 92, 246, 0.3)",
+                                    borderColor: "rgba(124, 58, 237, 0.2)",
                                     transform: [{ scale: pressed ? 0.97 : 1 }],
                                   }
                                 ]}
                               >
-                                <AIGatewayIcon color="#a78bfa" size={12} />
-                                <Text style={{ color: "#a78bfa", fontSize: 11, fontWeight: "800" }}>Quick AI Revision</Text>
+                                <AIGatewayIcon color="#7C3AED" size={12} />
+                                <Text style={{ color: "#7C3AED", fontSize: 11, fontWeight: "800" }}>Quick AI Revision</Text>
                               </Pressable>
                             </View>
                           </View>
@@ -618,10 +831,10 @@ export default function ConsultationsScreen() {
                     <View style={{ flex: 1 }}>
                       <ScrollView 
                         showsVerticalScrollIndicator={true}
-                        style={{ flex: 1, backgroundColor: "rgba(2, 6, 23, 0.2)", borderRadius: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.03)", padding: 14 }}
+                        style={{ flex: 1, backgroundColor: "rgba(15, 23, 42, 0.4)", borderRadius: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.04)", padding: 14 }}
                         {...({ className: "ultra-thin-scroll" } as any)}
                       >
-                        <Text style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 22, fontWeight: "500" }}>
+                        <Text style={{ color: "#CBD5E1", fontSize: 13, lineHeight: 22, fontWeight: "500" }}>
                           {selected.transcript_text ? selected.transcript_text : "No audio transcript is available for this guidance session."}
                         </Text>
                       </ScrollView>
@@ -637,7 +850,6 @@ export default function ConsultationsScreen() {
                       >
                         {(selected.revision_annotations ?? []).map((ann, idx) => (
                           <View key={ann.id} style={[getGlassStyle(0.1, 12) as any, styles.annotationCard]}>
-                            {/* File header */}
                             <View style={styles.annotationHeader}>
                               <Text style={styles.annotationIcon}>
                                 {ann.file_type === "image" ? "📸" : "📄"}
@@ -660,7 +872,6 @@ export default function ConsultationsScreen() {
                                 <Text style={styles.annotationBadgeText}>Download</Text>
                               </Pressable>
                             </View>
-                            {/* Image preview if available */}
                             {ann.file_type === "image" && Platform.OS === "web" && (
                               <img
                                 src={`${API_URL}/storage/annotations/${ann.filename}`}
@@ -676,7 +887,6 @@ export default function ConsultationsScreen() {
                                 onError={(e: any) => { e.target.style.display = "none"; }}
                               />
                             )}
-                            {/* Extracted text / OCR result */}
                             <View style={styles.ocrTextBox}>
                               <Text style={styles.ocrLabel}>AI EXTRACTED CONTENT</Text>
                               <ScrollView
@@ -693,7 +903,7 @@ export default function ConsultationsScreen() {
                         ))}
                         {!(selected.revision_annotations ?? []).length && (
                           <View style={{ paddingVertical: 40, alignItems: "center" }}>
-                            <Text style={{ color: "#64748b", fontSize: 13 }}>No advisor annotations available for this session.</Text>
+                            <Text style={{ color: "#64748B", fontSize: 13 }}>No advisor annotations available for this session.</Text>
                           </View>
                         )}
                       </ScrollView>
@@ -722,7 +932,7 @@ export default function ConsultationsScreen() {
                               style={[
                                 getGlassStyle(0.1, 14) as any, 
                                 styles.draftCard,
-                                isSelected && { borderColor: "rgba(6, 182, 212, 0.3)", backgroundColor: "rgba(6, 182, 212, 0.05)" }
+                                isSelected && { borderColor: "rgba(8, 145, 178, 0.3)", backgroundColor: "rgba(8, 145, 178, 0.04)" }
                               ]}
                             >
                               <View style={styles.draftHeader}>
@@ -738,20 +948,20 @@ export default function ConsultationsScreen() {
                                     onPress={() => Platform.OS === "web" && window.open(`${API_URL}/storage/paper/${log.paper_filename}`)}
                                     style={({ pressed }) => [
                                       styles.draftBadge,
-                                      { backgroundColor: "rgba(6, 182, 212, 0.15)", borderColor: "rgba(6, 182, 212, 0.25)", opacity: pressed ? 0.7 : 1 }
+                                      { backgroundColor: "rgba(8, 145, 178, 0.08)", borderColor: "rgba(8, 145, 178, 0.15)", opacity: pressed ? 0.7 : 1 }
                                     ]}
                                   >
-                                    <Text style={[styles.draftBadgeText, { color: "#06b6d4" }]}>Download</Text>
+                                    <Text style={[styles.draftBadgeText, { color: "#0891B2" }]}>Download</Text>
                                   </Pressable>
                                   {!isSelected && (
                                     <Pressable
                                       onPress={() => setSelectedLog(log)}
                                       style={({ pressed }) => [
                                         styles.draftBadge,
-                                        { backgroundColor: "rgba(99, 102, 241, 0.15)", borderColor: "rgba(99, 102, 241, 0.25)", opacity: pressed ? 0.7 : 1 }
+                                        { backgroundColor: "rgba(79, 70, 229, 0.08)", borderColor: "rgba(79, 70, 229, 0.15)", opacity: pressed ? 0.7 : 1 }
                                       ]}
                                     >
-                                      <Text style={[styles.draftBadgeText, { color: "#818cf8" }]}>Load Session</Text>
+                                      <Text style={[styles.draftBadgeText, { color: "#4F46E5" }]}>Load Session</Text>
                                     </Pressable>
                                   )}
                                 </View>
@@ -771,7 +981,7 @@ export default function ConsultationsScreen() {
                                   <Text style={styles.draftMetaLabel}>STATUS</Text>
                                   <Text style={[
                                     styles.draftMetaValue, 
-                                    { color: log.feedback_items?.every(f => f.status === "Validated") ? "#10b981" : "#f59e0b" }
+                                    { color: log.feedback_items?.every(f => f.status === "Validated") ? "#059669" : "#D97706" }
                                   ]}>
                                     {log.feedback_items?.every(f => f.status === "Validated") ? "Approved" : "Revision Needed"}
                                   </Text>
@@ -782,7 +992,7 @@ export default function ConsultationsScreen() {
                         })}
                         {!logs.length && (
                           <View style={{ paddingVertical: 40, alignItems: "center" }}>
-                            <Text style={{ color: "#64748b", fontSize: 13 }}>No drafts uploaded yet.</Text>
+                            <Text style={{ color: "#64748B", fontSize: 13 }}>No drafts uploaded yet.</Text>
                           </View>
                         )}
                       </ScrollView>
@@ -790,7 +1000,7 @@ export default function ConsultationsScreen() {
                   )
                 ) : (
                   <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-                    <Text style={{ color: "#64748b", fontSize: 13, textAlign: "center" }}>Select a session from the history archive to view details.</Text>
+                    <Text style={{ color: "#64748B", fontSize: 13, textAlign: "center" }}>Select a session from the history archive to view details.</Text>
                   </View>
                 )}
               </View>
@@ -808,7 +1018,7 @@ export default function ConsultationsScreen() {
                       </Text>
                       <Badge 
                         text={chatMode === "oracle" ? "ONLINE" : "DIRECT"} 
-                        color={chatMode === "oracle" ? "#10b981" : "#06b6d4"} 
+                        color={chatMode === "oracle" ? "#059669" : "#0891B2"} 
                       />
                     </View>
                     
@@ -827,7 +1037,7 @@ export default function ConsultationsScreen() {
                             chatMode === "oracle" ? styles.chatHeaderTabTextActive : null,
                           ]}
                         >
-                          🔮 AI Oracle
+                          AI Oracle Assistant
                         </Text>
                       </Pressable>
                       <Pressable
@@ -843,7 +1053,7 @@ export default function ConsultationsScreen() {
                             chatMode === "advisor" ? styles.chatHeaderTabTextActive : null,
                           ]}
                         >
-                          💬 Advisor Chat
+                          Advisor Discussion
                         </Text>
                       </Pressable>
                     </View>
@@ -858,41 +1068,53 @@ export default function ConsultationsScreen() {
                       contentContainerStyle={styles.chatHistoryContent}
                     >
                       {chatMode === "oracle" ? (
-                        chatHistory.map((message, index) => {
-                          const isUser = message.role === "user";
-                          return (
-                            <View
-                              key={`oracle-${index}`}
-                              style={[
-                                styles.chatBubble,
-                                isUser ? styles.chatBubbleUser : styles.chatBubbleAI,
-                              ]}
-                            >
-                              <Text style={styles.chatRole}>
-                                {isUser ? "STUDENT" : "AI ORACLE"}
-                              </Text>
-                              <Text style={styles.chatText}>{message.content}</Text>
-                            </View>
-                          );
-                        })
+                        <>
+                          {chatHistory.map((message, index) => {
+                            const isUser = message.role === "user";
+                            const isError = !isUser && message.content.startsWith("⚠️");
+                            return (
+                              <View
+                                key={`oracle-${index}`}
+                                style={[
+                                  styles.chatBubble,
+                                  isUser ? styles.chatBubbleUser : styles.chatBubbleAI,
+                                  isError && {
+                                    backgroundColor: "rgba(220, 38, 38, 0.06)",
+                                    borderColor: "rgba(220, 38, 38, 0.2)",
+                                    borderWidth: 1,
+                                  }
+                                ]}
+                              >
+                                <Text style={[styles.chatRole, isError && { color: "#DC2626" }]}>
+                                  {isUser ? "STUDENT" : isError ? "WARNING ALERT" : "AI ORACLE"}
+                                </Text>
+                                <Text style={[styles.chatText, isError && { color: "#DC2626" }]}>{message.content}</Text>
+                              </View>
+                            );
+                          })}
+                          {chatLoading && <TypingIndicator />}
+                        </>
                       ) : (
-                        directMessages.map((message, index) => {
-                          const isUser = message.sender_role === "student";
-                          return (
-                            <View
-                              key={`advisor-${message.id || index}`}
-                              style={[
-                                styles.chatBubble,
-                                isUser ? styles.chatBubbleUser : styles.chatBubbleAI,
-                              ]}
-                            >
-                              <Text style={styles.chatRole}>
-                                {isUser ? "STUDENT" : "ADVISOR"}
-                              </Text>
-                              <Text style={styles.chatText}>{message.content}</Text>
-                            </View>
-                          );
-                        })
+                        <>
+                          {directMessages.map((message, index) => {
+                            const isUser = message.sender_role === "student";
+                            return (
+                              <View
+                                key={`advisor-${message.id || index}`}
+                                style={[
+                                  styles.chatBubble,
+                                  isUser ? styles.chatBubbleUser : styles.chatBubbleAI,
+                                ]}
+                              >
+                                <Text style={styles.chatRole}>
+                                  {isUser ? "STUDENT" : "ADVISOR"}
+                                </Text>
+                                <Text style={styles.chatText}>{message.content}</Text>
+                              </View>
+                            );
+                          })}
+                          {chatLoading && <TypingIndicator label="SENDING MESSAGE" color="#0891B2" />}
+                        </>
                       )}
 
                       {chatMode === "oracle" && !chatHistory.length && (
@@ -917,16 +1139,23 @@ export default function ConsultationsScreen() {
                       <TextInput
                         value={chatQuery}
                         onChangeText={setChatQuery}
+                        editable={!chatLoading}
                         placeholder={
-                          chatMode === "oracle"
-                            ? "Ask about thesis writing or revisions..."
-                            : "Type a message to your Advisor..."
+                          chatLoading
+                            ? "AI Oracle is processing response..."
+                            : chatMode === "oracle"
+                            ? "Ask about draft thesis revisions..."
+                            : "Send a direct message to your advisor..."
                         }
-                        placeholderTextColor="#475569"
+                        placeholderTextColor="#94A3B8"
                         onSubmitEditing={() => void sendChat()}
-                        style={styles.chatInput}
+                        style={[styles.chatInput, chatLoading && { opacity: 0.6, backgroundColor: "rgba(15, 23, 42, 0.6)" }]}
                       />
-                      <Pressable onPress={() => void sendChat()} style={styles.sendButton}>
+                      <Pressable 
+                        onPress={() => void sendChat()} 
+                        disabled={chatLoading || !chatQuery.trim()}
+                        style={[styles.sendButton, (chatLoading || !chatQuery.trim()) && { opacity: 0.5 }]}
+                      >
                         <Text style={styles.sendButtonText}>Send</Text>
                       </Pressable>
                     </View>
@@ -934,7 +1163,7 @@ export default function ConsultationsScreen() {
                 </View>
               ) : (
                 <View style={styles.emptyRightPanel}>
-                  <ArchiveIcon color="#64748b" size={48} />
+                  <ArchiveIcon color="#6366F1" size={48} />
                   <Text style={styles.emptyRightText}>
                     Please select a guidance session from the timeline to review feedback and consult the AI assistant.
                   </Text>
@@ -949,7 +1178,7 @@ export default function ConsultationsScreen() {
             {/* Panel Kiri: Student Document Queue (25% width) */}
             <Card style={[styles.leftPanel, { flex: 1 }]}>
               <View style={styles.panelHeader}>
-                <ArchiveIcon color="#6366f1" size={20} />
+                <ArchiveIcon color="#4F46E5" size={20} />
                 <Text style={styles.panelTitle}>Documents Queue</Text>
               </View>
 
@@ -963,6 +1192,8 @@ export default function ConsultationsScreen() {
                   const isSelected = selected?.id === log.id;
                   const studentName = log.student?.name ?? "Student";
                   const pendingCount = log.feedback_items?.filter(f => f.status === "Pending" || f.status === "Fixed").length ?? 0;
+                  const meetNum = getMeetingNumber(log.id, log.student_id);
+                  const sessionDateStr = formatSessionDate(log.created_at as any);
 
                   return (
                     <Pressable
@@ -979,22 +1210,25 @@ export default function ConsultationsScreen() {
                       <View style={styles.sessionStatusRow}>
                         <Badge text={log.student?.nim ?? "STUDENT"} />
                         {pendingCount > 0 ? (
-                          <Badge text={`${pendingCount} REVISIONS`} color="#f59e0b" />
+                          <Badge text={`${pendingCount} REVISIONS`} color="#D97706" />
                         ) : (
-                          <Badge text="VALIDATED" color="#10b981" />
+                          <Badge text="VALIDATED" color="#059669" />
                         )}
                       </View>
                       <Text
                         style={[
                           styles.sessionFile,
-                          isSelected ? { color: "#ffffff" } : { color: "#cbd5e1" },
+                          isSelected ? { color: "#0F172A" } : { color: "#334155" },
                         ]}
                         numberOfLines={1}
                       >
-                        {studentName}
+                        {studentName} (Session #{meetNum})
+                      </Text>
+                      <Text style={[styles.sessionDate, { color: "#0891B2", fontWeight: "700", marginTop: 2 }]} numberOfLines={1}>
+                        Date: {sessionDateStr}
                       </Text>
                       <Text style={styles.sessionDate} numberOfLines={1}>
-                        {log.paper_filename}
+                        File: {log.paper_filename}
                       </Text>
                     </Pressable>
                   );
@@ -1029,7 +1263,7 @@ export default function ConsultationsScreen() {
                         style={({ pressed }) => [
                           styles.playPauseBtn,
                           { transform: [{ scale: pressed ? 0.94 : 1 }] },
-                          getGlowStyle(isPlaying ? "#10b981" : "#6366f1", 0.15) as any
+                          getGlowStyle(isPlaying ? "#059669" : "#4F46E5", 0.08) as any
                         ]}
                       >
                         <Text style={{ color: "#ffffff", fontWeight: "900", fontSize: 13 }}>
@@ -1052,7 +1286,7 @@ export default function ConsultationsScreen() {
                   <View style={[styles.feedbackSection, { height: 260 }]}>
                     <View style={styles.transcriptionHeader}>
                       <Text style={styles.sectionHeaderTitle}>Guidance Dialog Transcript (AI Generated)</Text>
-                      <Badge text="STT ENGINE ACTIVE" color="#06b6d4" />
+                      <Badge text="STT ENGINE ACTIVE" color="#0891B2" />
                     </View>
 
                     <ScrollView
@@ -1086,7 +1320,7 @@ export default function ConsultationsScreen() {
                 </View>
               ) : (
                 <View style={styles.emptyRightPanel}>
-                  <ArchiveIcon color="#64748b" size={48} />
+                  <ArchiveIcon color="#64748B" size={48} />
                   <Text style={styles.emptyRightText}>
                     Please select a student from the left queue to review the audio recording and transcript.
                   </Text>
@@ -1104,7 +1338,7 @@ export default function ConsultationsScreen() {
                   </View>
 
                   {/* Scrollable list of feedback items */}
-                  <View style={{ height: 180, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.04)", paddingBottom: 14 }}>
+                  <View style={{ height: 180, borderBottomWidth: 1, borderColor: "rgba(0,0,0,0.06)", paddingBottom: 14 }}>
                     <Text style={styles.sectionHeaderTitle}>Select Revision Item</Text>
                     <ScrollView
                       showsVerticalScrollIndicator={true}
@@ -1113,7 +1347,7 @@ export default function ConsultationsScreen() {
                     >
                       {selected.feedback_items?.map((item) => {
                         const isSelected = selectedFeedbackItem?.id === item.id;
-                        const statusColor = item.status === "Validated" ? "#10b981" : item.status === "Fixed" ? "#6366f1" : "#f59e0b";
+                        const statusColor = item.status === "Validated" ? "#059669" : item.status === "Fixed" ? "#4F46E5" : "#D97706";
                         
                         return (
                           <Pressable
@@ -1125,7 +1359,7 @@ export default function ConsultationsScreen() {
                             }}
                             style={[
                               styles.miniFeedbackItem,
-                              isSelected ? { borderColor: statusColor, backgroundColor: `${statusColor}08` } : { borderColor: "rgba(255,255,255,0.03)" }
+                              isSelected ? { borderColor: statusColor, backgroundColor: `${statusColor}08` } : { borderColor: "rgba(0,0,0,0.04)" }
                             ]}
                           >
                             <Badge text={`${item.category} • ${item.status}`} color={statusColor} />
@@ -1161,42 +1395,64 @@ export default function ConsultationsScreen() {
                             onPress={() => setFeedbackCategory("Major")}
                             style={[styles.pillBtn, feedbackCategory === "Major" ? styles.pillBtnActiveMajor : styles.pillBtnInactive]}
                           >
-                            <Text style={styles.pillText}>MAJOR</Text>
+                            <Text style={[styles.pillText, feedbackCategory === "Major" ? { color: "#DC2626" } : { color: "#475569" }]}>MAJOR</Text>
                           </Pressable>
                           <Pressable 
                             onPress={() => setFeedbackCategory("Minor")}
                             style={[styles.pillBtn, feedbackCategory === "Minor" ? styles.pillBtnActiveMinor : styles.pillBtnInactive]}
                           >
-                            <Text style={styles.pillText}>MINOR</Text>
+                            <Text style={[styles.pillText, feedbackCategory === "Minor" ? { color: "#4F46E5" } : { color: "#475569" }]}>MINOR</Text>
                           </Pressable>
                         </View>
                       </View>
 
-                      {/* Main Glowing Action Validation Buttons */}
                       <View style={styles.validationGrid}>
-                        <View style={{ width: "100%" }}>
-                          <Button
-                            title="Validate"
-                            onPress={() => void updateStatus(selectedFeedbackItem, "Validated")}
-                            tone="success"
-                          />
-                        </View>
-                        <View style={styles.dualButtons}>
-                          <View style={{ flex: 1 }}>
+                        {selectedFeedbackItem.status === "Validated" ? (
+                          <View style={{ width: "100%", gap: 8 }}>
+                            <View style={{ backgroundColor: "rgba(5, 150, 105, 0.06)", borderColor: "rgba(5, 150, 105, 0.15)", borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6 }}>
+                              <CheckCircleIcon color="#059669" size={14} />
+                              <Text style={{ color: "#059669", fontSize: 12, fontWeight: "800" }}>ITEM ALREADY VALIDATED</Text>
+                            </View>
                             <Button
-                              title="Reject"
-                              onPress={() => void updateStatus(selectedFeedbackItem, "Pending")}
-                              tone="danger"
-                            />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Button
-                              title="Reset Pending"
+                              title="Undo Validation (Reset to Pending)"
                               onPress={() => void updateStatus(selectedFeedbackItem, "Pending")}
                               tone="warning"
                             />
                           </View>
-                        </View>
+                        ) : selectedFeedbackItem.status === "Fixed" ? (
+                          <View style={{ width: "100%", gap: 10 }}>
+                            <View style={{ backgroundColor: "rgba(79, 70, 229, 0.06)", borderColor: "rgba(79, 70, 229, 0.15)", borderWidth: 1, borderRadius: 12, padding: 12, alignItems: "center" }}>
+                              <Text style={{ color: "#4F46E5", fontSize: 12, fontWeight: "800" }}>STUDENT SUBMITTED RESOLUTION</Text>
+                            </View>
+                            <View style={{ width: "100%" }}>
+                              <Button
+                                  title="Validate & Approve (Accept Revision)"
+                                onPress={() => void updateStatus(selectedFeedbackItem, "Validated")}
+                                tone="success"
+                              />
+                            </View>
+                            <View style={{ width: "100%" }}>
+                              <Button
+                                  title="Reject Fix (Return to Pending)"
+                                onPress={() => void updateStatus(selectedFeedbackItem, "Pending")}
+                                tone="danger"
+                              />
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={{ width: "100%", gap: 10 }}>
+                            <View style={{ backgroundColor: "rgba(217, 119, 6, 0.06)", borderColor: "rgba(217, 119, 6, 0.15)", borderWidth: 1, borderRadius: 12, padding: 12, alignItems: "center" }}>
+                              <Text style={{ color: "#D97706", fontSize: 12, fontWeight: "800" }}>⚠️ STATUS: PENDING WORK</Text>
+                            </View>
+                            <View style={{ width: "100%" }}>
+                              <Button
+                                title="Validate Immediately"
+                                onPress={() => void updateStatus(selectedFeedbackItem, "Validated")}
+                                tone="success"
+                              />
+                            </View>
+                          </View>
+                        )}
                       </View>
                     </View>
                   ) : (
@@ -1205,7 +1461,7 @@ export default function ConsultationsScreen() {
                 </View>
               ) : (
                 <View style={styles.emptyRightPanel}>
-                  <ArchiveIcon color="#64748b" size={48} />
+                  <ArchiveIcon color="#64748B" size={48} />
                   <Text style={styles.emptyRightText}>
                     Feedback audits, validation actions, and category control options will be displayed here once a session is selected.
                   </Text>
@@ -1214,6 +1470,55 @@ export default function ConsultationsScreen() {
             </Card>
           </View>
         )}
+        
+        {/* Floating Toast Notification Container */}
+        <View style={{ position: Platform.OS === "web" ? "fixed" : "absolute", top: 80, right: 20, zIndex: 99999, gap: 10, width: 320 }}>
+          {toasts.map(toast => {
+            const translateAnim = toast.animatedValue.interpolate({
+              inputRange: [0, 1],
+              outputRange: [340, 0], // slide from right
+            });
+            const opacityAnim = toast.animatedValue;
+            
+            let icon = "🔔";
+            let color = "#6366F1";
+            if (toast.type === "chat") {
+              icon = "💬";
+              color = "#0891B2";
+            } else if (toast.type === "revision") {
+              icon = "✅";
+              color = "#059669";
+            }
+            
+            return (
+              <Animated.View
+                key={toast.id}
+                style={[
+                  {
+                    opacity: opacityAnim,
+                    transform: [{ translateX: translateAnim }],
+                    padding: 16,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: "rgba(255, 255, 255, 0.08)",
+                    backgroundColor: "rgba(15, 23, 42, 0.95)",
+                    flexDirection: "row",
+                    gap: 12,
+                    alignItems: "center",
+                  },
+                  getGlassStyle(0.2, 14) as any,
+                  getGlowStyle(color, 0.1) as any,
+                ]}
+              >
+                <Text style={{ fontSize: 20 }}>{icon}</Text>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ color: "#ffffff", fontSize: 13, fontWeight: "800" }}>{toast.title}</Text>
+                  <Text style={{ color: "#CBD5E1", fontSize: 11, fontWeight: "500" }} numberOfLines={2}>{toast.message}</Text>
+                </View>
+              </Animated.View>
+            );
+          })}
+        </View>
       </Page>
     </RequireAuth>
   );
@@ -1224,12 +1529,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
-    borderColor: "rgba(239, 68, 68, 0.2)",
+    backgroundColor: "rgba(220, 38, 38, 0.06)",
+    borderColor: "rgba(220, 38, 38, 0.15)",
     padding: 16,
   },
   errorText: {
-    color: "#fca5a5",
+    color: "#DC2626",
     fontSize: 14,
     fontWeight: "600",
   },
@@ -1263,12 +1568,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     paddingBottom: 14,
     marginBottom: 20,
   },
   panelTitle: {
-    color: "#ffffff",
+    color: "#F8FAFC",
     fontSize: 18,
     fontWeight: "900",
     letterSpacing: -0.5,
@@ -1287,13 +1592,14 @@ const styles = StyleSheet.create({
     transition: "all 0.2s ease-in-out",
   } as any,
   sessionItemInactive: {
-    backgroundColor: "rgba(2, 6, 23, 0.2)",
-    borderColor: "rgba(255,255,255,0.03)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
   },
   sessionItemActive: {
-    backgroundColor: "rgba(99, 102, 241, 0.05)",
-    borderColor: "#6366f1",
-  },
+    backgroundColor: "rgba(99, 102, 241, 0.08)",
+    borderColor: "#6366F1",
+    boxShadow: "0 0 15px rgba(99, 102, 241, 0.15)",
+  } as any,
   sessionStatusRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1306,8 +1612,8 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   activeIndicatorGlow: {
-    backgroundColor: "#6366f1",
-    boxShadow: "0 0 8px #6366f1",
+    backgroundColor: "#6366F1",
+    boxShadow: "0 0 8px #6366F1",
   } as any,
   sessionFile: {
     fontSize: 14,
@@ -1315,7 +1621,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   sessionDate: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 12,
     lineHeight: 18,
     fontWeight: "500",
@@ -1326,7 +1632,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   emptySessionText: {
-    color: "#475569",
+    color: "#94A3B8",
     fontSize: 13,
     fontWeight: "600",
   },
@@ -1336,14 +1642,14 @@ const styles = StyleSheet.create({
   },
   activeSessionHeader: {
     borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     paddingBottom: 12,
   },
   chatHeaderTabs: {
     flexDirection: "row",
-    backgroundColor: "rgba(2, 6, 23, 0.4)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
     borderRadius: 12,
     padding: 3,
     marginBottom: 10,
@@ -1357,10 +1663,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   chatHeaderTabActive: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#6366F1",
   },
   chatHeaderTabText: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 11,
     fontWeight: "700",
   },
@@ -1368,19 +1674,19 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
   activeLabel: {
-    color: "#6366f1",
+    color: "#6366F1",
     fontSize: 9,
     fontWeight: "900",
     letterSpacing: 1.5,
   },
   activeTitle: {
-    color: "#ffffff",
+    color: "#F8FAFC",
     fontSize: 18,
     fontWeight: "900",
     marginTop: 4,
   },
   sectionHeaderTitle: {
-    color: "#cbd5e1",
+    color: "#CBD5E1",
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 0.5,
@@ -1390,7 +1696,7 @@ const styles = StyleSheet.create({
   feedbackSection: {
     height: 200,
     borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     paddingBottom: 14,
   },
   feedbackScroll: {
@@ -1402,19 +1708,19 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     padding: 16,
     gap: 10,
-    backgroundColor: "rgba(2, 6, 23, 0.2)",
+    backgroundColor: "rgba(30, 41, 59, 0.4)",
   },
   feedbackItemPending: {
-    borderColor: "rgba(245, 158, 11, 0.2)",
-    borderLeftColor: "#f59e0b",
+    borderColor: "rgba(217, 119, 6, 0.3)",
+    borderLeftColor: "#D97706",
   },
   feedbackItemFixed: {
-    borderColor: "rgba(16, 185, 129, 0.2)",
-    borderLeftColor: "#10b981",
+    borderColor: "rgba(5, 150, 105, 0.3)",
+    borderLeftColor: "#059669",
   },
   feedbackItemValidated: {
-    borderColor: "rgba(99, 102, 241, 0.2)",
-    borderLeftColor: "#6366f1",
+    borderColor: "rgba(99, 102, 241, 0.3)",
+    borderLeftColor: "#6366F1",
   },
   feedbackMeta: {
     flexDirection: "row",
@@ -1422,7 +1728,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   feedbackBody: {
-    color: "#e2e8f0",
+    color: "#E2E8F0",
     fontSize: 13.5,
     lineHeight: 20,
     fontWeight: "500",
@@ -1434,7 +1740,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   emptyFeedbackText: {
-    color: "#475569",
+    color: "#94A3B8",
     fontSize: 13,
     fontWeight: "500",
     paddingVertical: 12,
@@ -1449,16 +1755,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chatHeaderTitle: {
-    color: "#ffffff",
+    color: "#F8FAFC",
     fontSize: 14,
     fontWeight: "900",
     letterSpacing: -0.2,
   },
   chatHistoryScroll: {
     height: 160,
-    backgroundColor: "rgba(2, 6, 23, 0.3)",
+    backgroundColor: "rgba(15, 23, 42, 0.4)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.03)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
     borderRadius: 14,
     padding: 12,
   },
@@ -1473,25 +1779,25 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   chatBubbleUser: {
-    backgroundColor: "rgba(99, 102, 241, 0.15)",
+    backgroundColor: "rgba(99, 102, 241, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(99, 102, 241, 0.2)",
+    borderColor: "rgba(99, 102, 241, 0.15)",
     alignSelf: "flex-end",
   },
   chatBubbleAI: {
-    backgroundColor: "rgba(30, 41, 59, 0.4)",
+    backgroundColor: "rgba(30, 41, 59, 0.5)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     alignSelf: "flex-start",
   },
   chatRole: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 9,
     fontWeight: "900",
     letterSpacing: 1.5,
   },
   chatText: {
-    color: "#ffffff",
+    color: "#E2E8F0",
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "500",
@@ -1501,7 +1807,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyChatText: {
-    color: "#475569",
+    color: "#94A3B8",
     fontSize: 12.5,
     fontWeight: "600",
     textAlign: "center",
@@ -1514,11 +1820,11 @@ const styles = StyleSheet.create({
   },
   chatInput: {
     flex: 1,
-    backgroundColor: "rgba(2, 6, 23, 0.5)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 12,
-    color: "#ffffff",
+    color: "#F8FAFC",
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 13,
@@ -1526,7 +1832,7 @@ const styles = StyleSheet.create({
     outlineStyle: "none",
   } as any,
   sendButton: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#6366F1",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
@@ -1547,7 +1853,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   emptyRightText: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 14,
     textAlign: "center",
     maxWidth: 360,
@@ -1560,11 +1866,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     gap: 8,
-    backgroundColor: "rgba(2, 6, 23, 0.15)",
+    backgroundColor: "rgba(30, 41, 59, 0.4)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
     transition: "all 0.2s ease",
   } as any,
   miniFeedbackText: {
-    color: "#e2e8f0",
+    color: "#E2E8F0",
     fontSize: 12,
     fontWeight: "500",
   },
@@ -1575,17 +1882,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   formLabel: {
-    color: "#64748b",
+    color: "#CBD5E1",
     fontSize: 9,
     fontWeight: "900",
     letterSpacing: 1.5,
   },
   formTextArea: {
-    backgroundColor: "rgba(2, 6, 23, 0.4)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 12,
-    color: "#ffffff",
+    color: "#F8FAFC",
     padding: 12,
     fontSize: 13,
     fontWeight: "500",
@@ -1606,21 +1913,20 @@ const styles = StyleSheet.create({
     transition: "all 0.25s ease",
   } as any,
   pillBtnInactive: {
-    backgroundColor: "rgba(2, 6, 23, 0.3)",
-    borderColor: "rgba(255,255,255,0.03)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
   },
   pillBtnActiveMajor: {
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
-    borderColor: "#ef4444",
-    boxShadow: "0 0 10px rgba(239,68,68,0.15)"
+    backgroundColor: "rgba(220, 38, 38, 0.06)",
+    borderColor: "#DC2626",
+    boxShadow: "0 0 10px rgba(220, 38, 38, 0.1)"
   } as any,
   pillBtnActiveMinor: {
-    backgroundColor: "rgba(99, 102, 241, 0.1)",
-    borderColor: "#6366f1",
-    boxShadow: "0 0 10px rgba(99,102,241,0.15)"
+    backgroundColor: "rgba(99, 102, 241, 0.06)",
+    borderColor: "#6366F1",
+    boxShadow: "0 0 10px rgba(99, 102, 241, 0.1)"
   } as any,
   pillText: {
-    color: "#ffffff",
     fontSize: 11,
     fontWeight: "900",
     letterSpacing: 1,
@@ -1634,15 +1940,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   audioPlayerContainer: {
-    backgroundColor: "rgba(2, 6, 23, 0.25)",
+    backgroundColor: "rgba(15, 23, 42, 0.4)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.02)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
     borderRadius: 16,
     padding: 16,
     gap: 10,
   },
   audioLabel: {
-    color: "#6366f1",
+    color: "#6366F1",
     fontSize: 9,
     fontWeight: "900",
     letterSpacing: 1.5,
@@ -1653,7 +1959,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   playPauseBtn: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#6366F1",
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 16,
@@ -1668,14 +1974,14 @@ const styles = StyleSheet.create({
   },
   trackSliderLineEmpty: {
     height: 4,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 99,
     width: "100%",
     position: "relative",
   },
   trackSliderLineFill: {
     height: "100%",
-    backgroundColor: "#10b981",
+    backgroundColor: "#059669",
     borderRadius: 99,
     position: "absolute",
     left: 0,
@@ -1686,12 +1992,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   timeElapsed: {
-    color: "#cbd5e1",
+    color: "#E2E8F0",
     fontSize: 11,
     fontWeight: "600",
   },
   timeTotal: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 11,
     fontWeight: "600",
   },
@@ -1703,15 +2009,15 @@ const styles = StyleSheet.create({
   },
   transcriptScrollLecturer: {
     height: 120,
-    backgroundColor: "rgba(2, 6, 23, 0.3)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.03)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     borderRadius: 12,
     padding: 12,
     outlineStyle: "none",
   } as any,
   transcriptTextLarge: {
-    color: "#e2e8f0",
+    color: "#CBD5E1",
     fontSize: 13,
     lineHeight: 20,
     fontWeight: "500",
@@ -1725,10 +2031,10 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(167, 139, 250, 0.12)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
     gap: 8,
     marginBottom: 12,
-    backgroundColor: "rgba(2, 6, 23, 0.2)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
   },
   annotationHeader: {
     flexDirection: "row",
@@ -1739,44 +2045,44 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   annotationFilename: {
-    color: "#e2e8f0",
+    color: "#F8FAFC",
     fontSize: 12,
     fontWeight: "700",
   },
   annotationTypeLabel: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 10,
     marginTop: 2,
   },
   annotationBadge: {
-    backgroundColor: "rgba(167, 139, 250, 0.15)",
+    backgroundColor: "rgba(124, 58, 237, 0.08)",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: "rgba(167, 139, 250, 0.25)",
+    borderColor: "rgba(124, 58, 237, 0.15)",
   },
   annotationBadgeText: {
-    color: "#a78bfa",
+    color: "#7C3AED",
     fontSize: 10,
     fontWeight: "700",
   },
   ocrTextBox: {
-    backgroundColor: "rgba(2, 6, 23, 0.35)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderWidth: 1,
-    borderColor: "rgba(167, 139, 250, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
     borderRadius: 10,
     padding: 10,
     gap: 6,
   },
   ocrLabel: {
-    color: "#a78bfa",
+    color: "#7C3AED",
     fontSize: 9,
     fontWeight: "900",
     letterSpacing: 1.5,
   },
   ocrText: {
-    color: "#cbd5e1",
+    color: "#CBD5E1",
     fontSize: 12.5,
     lineHeight: 20,
     fontWeight: "400",
@@ -1786,10 +2092,10 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.12)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
     gap: 12,
     marginBottom: 12,
-    backgroundColor: "rgba(2, 6, 23, 0.2)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
   },
   draftHeader: {
     flexDirection: "row",
@@ -1800,12 +2106,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   draftFilename: {
-    color: "#e2e8f0",
+    color: "#F8FAFC",
     fontSize: 13,
     fontWeight: "700",
   },
   draftDateLabel: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 10,
     marginTop: 2,
   },
@@ -1822,7 +2128,7 @@ const styles = StyleSheet.create({
   draftMetaGrid: {
     flexDirection: "row",
     gap: 12,
-    backgroundColor: "rgba(2, 6, 23, 0.3)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderRadius: 10,
     padding: 10,
   },
@@ -1831,13 +2137,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   draftMetaLabel: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 8,
     fontWeight: "900",
     letterSpacing: 1,
   },
   draftMetaValue: {
-    color: "#cbd5e1",
+    color: "#CBD5E1",
     fontSize: 11,
     fontWeight: "600",
   },

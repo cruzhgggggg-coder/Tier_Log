@@ -29,7 +29,7 @@ func CreateConsultation(c *gin.Context) {
 	// Find the student profile for this user
 	var student models.Student
 	if err := koneksi.DB.Where("user_id = ?", userID).First(&student).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Profil Mahasiswa tidak ditemukan untuk User ini"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Student profile not found for this User"})
 		return
 	}
 
@@ -170,7 +170,7 @@ func GetStats(c *gin.Context) {
 	pendingQuery.Count(&pendingFeedback)
 
 	var quests []models.FeedbackItem
-	feedbackQuery.Session(&gorm.Session{}).Where("status = ?", "Pending").Order("created_at desc").Limit(5).Find(&quests)
+	feedbackQuery.Session(&gorm.Session{}).Where("status != ?", "Validated").Order("created_at desc").Limit(5).Find(&quests)
 
 	c.JSON(http.StatusOK, gin.H{
 		"total_logs":       totalLogs,

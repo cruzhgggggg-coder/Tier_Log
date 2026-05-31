@@ -30,7 +30,7 @@ func CreateUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"message": "User baru berhasil dibuat", "data": user})
+	c.JSON(http.StatusCreated, gin.H{"message": "New user created successfully", "data": user})
 }
 
 // GetLecturers fetches all lecturers
@@ -54,7 +54,7 @@ func CreateLecturer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"message": "Data Dosen berhasil ditambahkan", "data": lecturer})
+	c.JSON(http.StatusCreated, gin.H{"message": "Lecturer data added successfully", "data": lecturer})
 }
 
 // GetStudents fetches all students
@@ -78,7 +78,7 @@ func CreateStudent(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"message": "Data Mahasiswa berhasil ditambahkan", "data": student})
+	c.JSON(http.StatusCreated, gin.H{"message": "Student data added successfully", "data": student})
 }
 // UpdateAIGatewaySettings updates the user's AI keys and preferred model
 func UpdateAIGatewaySettings(c *gin.Context) {
@@ -92,13 +92,13 @@ func UpdateAIGatewaySettings(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Format request tidak valid"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
 	var user models.User
 	if err := koneksi.DB.First(&user, req.UserID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User tidak ditemukan"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 
@@ -117,11 +117,11 @@ func UpdateAIGatewaySettings(c *gin.Context) {
 	user.PreferredModel = req.PreferredModel
 
 	if err := koneksi.DB.Save(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan pengaturan: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save settings: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Pengaturan AI Gateway berhasil diperbarui"})
+	c.JSON(http.StatusOK, gin.H{"message": "AI Gateway settings updated successfully"})
 }
 
 // RedeemGatewayCode activates AI Gateway for a user
@@ -132,19 +132,19 @@ func RedeemGatewayCode(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Format request tidak valid"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
 	var redeemCode models.RedeemCode
 	if err := koneksi.DB.Where("code = ? AND is_used = ?", req.Code, false).First(&redeemCode).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Kode redeem tidak valid atau sudah digunakan"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Redeem code is invalid or has already been used"})
 		return
 	}
 
 	var user models.User
 	if err := koneksi.DB.First(&user, req.UserID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User tidak ditemukan"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 
@@ -157,7 +157,7 @@ func RedeemGatewayCode(c *gin.Context) {
 	user.IsGatewayActive = true
 	koneksi.DB.Save(&user)
 
-	c.JSON(http.StatusOK, gin.H{"message": "AI Gateway Berhasil Diaktifkan! Selamat menikmati kebebasan plug-and-play."})
+	c.JSON(http.StatusOK, gin.H{"message": "AI Gateway Activated Successfully! Enjoy your plug-and-play freedom."})
 }
 
 // GenerateRedeemCode creates a new redeem code (Admin/Dev tool)
@@ -176,5 +176,5 @@ func GenerateRedeemCode(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Kode redeem berhasil dibuat", "code": req.Code})
+	c.JSON(http.StatusCreated, gin.H{"message": "Redeem code created successfully", "code": req.Code})
 }

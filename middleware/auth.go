@@ -16,7 +16,7 @@ func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := auth.AuthorizationToken(c.GetHeader("Authorization"))
 		if token == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization token diperlukan"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization token is required"})
 			return
 		}
 
@@ -28,7 +28,7 @@ func AuthRequired() gin.HandlerFunc {
 
 		var user models.User
 		if err := koneksi.DB.Preload("Student").Preload("Lecturer").First(&user, claims.UserID).Error; err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User tidak ditemukan"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 			return
 		}
 

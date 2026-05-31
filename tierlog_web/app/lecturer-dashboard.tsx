@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
   Platform,
   Pressable,
   ScrollView,
@@ -55,8 +56,8 @@ function getStudentStats(studentId: number, logs: ConsultationLog[]) {
 
 function statusColor(pending: number, sessions: number) {
   if (sessions === 0) return "#475569";
-  if (pending > 0) return "#f59e0b";
-  return "#10b981";
+  if (pending > 0) return "#D97706";
+  return "#059669";
 }
 
 function statusLabel(pending: number, sessions: number) {
@@ -82,22 +83,110 @@ const sectionHeaderStyles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     paddingBottom: 16,
     marginBottom: 20,
   },
   title: {
-    color: "#ffffff",
+    color: "#F8FAFC", // Titanium White
     fontSize: 16,
     fontWeight: "900",
     letterSpacing: -0.3,
   },
 });
 
+type TypingIndicatorProps = {
+  label?: string;
+  color?: string;
+};
+
+// --- Beautiful Pulsating typing animation component for Direct Chat ---
+const TypingIndicator = ({ label = "SENDING MESSAGE", color = "#0891B2" }: TypingIndicatorProps) => {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const createAnimation = (dot: Animated.Value, delay: number) => {
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, {
+            toValue: 1,
+            duration: 350,
+            useNativeDriver: Platform.OS !== "web",
+          }),
+          Animated.timing(dot, {
+            toValue: 0,
+            duration: 350,
+            useNativeDriver: Platform.OS !== "web",
+          }),
+        ])
+      );
+    };
+
+    const anim1 = createAnimation(dot1, 0);
+    const anim2 = createAnimation(dot2, 100);
+    const anim3 = createAnimation(dot3, 200);
+
+    anim1.start();
+    anim2.start();
+    anim3.start();
+
+    return () => {
+      anim1.stop();
+      anim2.stop();
+      anim3.stop();
+    };
+  }, [dot1, dot2, dot3]);
+
+  const getInterpolatedStyle = (dot: Animated.Value) => {
+    return {
+      opacity: dot.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.3, 1],
+      }),
+      transform: [
+        {
+          translateY: dot.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, -3],
+          }),
+        },
+      ],
+    };
+  };
+
+  return (
+    <View style={[
+      {
+        padding: 12,
+        borderRadius: 14,
+        maxWidth: "85%",
+        gap: 5,
+        backgroundColor: "rgba(255, 255, 255, 0.04)",
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.08)",
+        alignSelf: "flex-start",
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 12,
+        paddingHorizontal: 14
+      },
+      getGlowStyle(color, 0.05) as any
+    ]}>
+      <Text style={{ color: color, marginRight: 4, letterSpacing: 0.8, fontSize: 9, fontWeight: "900" }}>{label}</Text>
+      <Animated.View style={[{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color }, getInterpolatedStyle(dot1)]} />
+      <Animated.View style={[{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color }, getInterpolatedStyle(dot2)]} />
+      <Animated.View style={[{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color }, getInterpolatedStyle(dot3)]} />
+    </View>
+  );
+};
+
 // ─── main component ──────────────────────────────────────────────────────────
 
 export default function LecturerDashboardScreen() {
-  const { api, accessToken, user } = useAuth();
+  const { api, accessToken, user, booting } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [students, setStudents] = useState<StudentProfile[]>([]);
   const [logs, setLogs] = useState<ConsultationLog[]>([]);
@@ -106,18 +195,44 @@ export default function LecturerDashboardScreen() {
   const [panelView, setPanelView] = useState<PanelView>("overview");
   const [hoveredStudentId, setHoveredStudentId] = useState<number | null>(null);
 
+  // Floating Toast Notifications State
+  const [toasts, setToasts] = useState<Array<{ id: string; title: string; message: string; type: "chat" | "revision" | "system"; animatedValue: Animated.Value }>>([]);
+
+  const showToast = (title: string, message: string, type: "chat" | "revision" | "system") => {
+    const id = Math.random().toString(36).substring(7);
+    const anim = new Animated.Value(0);
+    
+    setToasts(prev => [...prev, { id, title, message, type, animatedValue: anim }]);
+    
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 350,
+      useNativeDriver: Platform.OS !== "web",
+    }).start();
+    
+    setTimeout(() => {
+      Animated.timing(anim, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: Platform.OS !== "web",
+      }).start(() => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+      });
+    }, 4500);
+  };
+
   // Realtime Peer Direct Chat states
   const [directMessages, setDirectMessages] = useState<any[]>([]);
   const [chatQuery, setChatQuery] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
   const chatScrollRef = useRef<ScrollView | null>(null);
 
   // Feedback quick-add state
   const [feedbackText, setFeedbackText] = useState("");
-  const [feedbackCategory, setFeedbackCategory] = useState<"Major" | "Minor">("Major");
-  const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState("");
   const [feedbackError, setFeedbackError] = useState("");
   const [composerCategory, setComposerCategory] = useState<"Auto" | "Major" | "Minor">("Auto");
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
   // Validation action state
   const [validatingId, setValidatingId] = useState<number | null>(null);
@@ -138,12 +253,14 @@ export default function LecturerDashboardScreen() {
   };
 
   useEffect(() => {
+    if (booting || !accessToken) return;
+
     loadAll().catch((err) =>
       setError(err instanceof Error ? err.message : "Failed to load dashboard data")
     );
-  }, [api]);
+  }, [api, booting, accessToken]);
 
-  // ── realtime WebSocket (Laravel Reverb / Echo style) ────────────────────
+  // ── realtime WebSocket ────────────────────
   useEffect(() => {
     if (!accessToken || logs.length === 0) return;
 
@@ -175,12 +292,26 @@ export default function LecturerDashboardScreen() {
           );
           // Refresh counters
           api<DashboardStats>("/dashboard/stats").then(setStats).catch(console.error);
+          
+          if (payload.data.status === "Fixed") {
+            const parentLog = logs.find(l => l.id === payload.data.log_id);
+            const studentName = parentLog?.student?.name ?? "A student";
+            showToast(
+              "Revision Fixed by Student 🛠️",
+              `${studentName} has marked a revision item as Fixed and submitted it for validation.`,
+              "revision"
+            );
+          }
         }
         if (payload.event === "chat.direct-message") {
           setDirectMessages((current) => {
             if (current.some((m) => m.id === payload.data.id)) return current;
             return [...current, payload.data];
           });
+          if (payload.data.sender_role === "student") {
+            const studentName = payload.data.sender?.name ?? "Student";
+            showToast(`New Message from ${studentName}`, payload.data.content, "chat");
+          }
         }
       } catch (e) {
         console.error("WS parse error:", e);
@@ -216,7 +347,7 @@ export default function LecturerDashboardScreen() {
   // ── actions ─────────────────────────────────────────────────────────────
   const handleValidate = async (feedbackId: number) => {
     setValidatingId(feedbackId);
-    // Find the log_id this feedback belongs to
+    setError("");
     const parentLog = logs.find((l) =>
       (l.feedback_items ?? []).some((f) => f.id === feedbackId)
     );
@@ -235,6 +366,34 @@ export default function LecturerDashboardScreen() {
       );
     } catch (e) {
       console.error(e);
+      setError(e instanceof Error ? e.message : "Failed to validate revision item.");
+    } finally {
+      setValidatingId(null);
+    }
+  };
+
+  const handleRejectFix = async (feedbackId: number) => {
+    setValidatingId(feedbackId);
+    setError("");
+    const parentLog = logs.find((l) =>
+      (l.feedback_items ?? []).some((f) => f.id === feedbackId)
+    );
+    try {
+      await api(`/consultations/feedback/${feedbackId}/status`, {
+        method: "PUT",
+        body: JSON.stringify({ status: "Pending", log_id: parentLog?.id ?? 0 }),
+      });
+      setLogs((current) =>
+        current.map((log) => ({
+          ...log,
+          feedback_items: (log.feedback_items ?? []).map((f) =>
+            f.id === feedbackId ? { ...f, status: "Pending" } : f
+          ),
+        }))
+      );
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : "Failed to reject revision fix.");
     } finally {
       setValidatingId(null);
     }
@@ -282,9 +441,10 @@ export default function LecturerDashboardScreen() {
   };
 
   const sendDirectMessage = async () => {
-    if (!latestLog || !chatQuery.trim()) return;
+    if (!latestLog || !chatQuery.trim() || chatLoading) return;
     const draft = chatQuery;
     setChatQuery("");
+    setChatLoading(true);
     try {
       const response = await api<{ data: any }>(`/consultations/${latestLog.id}/direct-messages`, {
         method: "POST",
@@ -296,6 +456,8 @@ export default function LecturerDashboardScreen() {
       });
     } catch (err) {
       console.error("Failed to send direct message:", err);
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -313,8 +475,6 @@ export default function LecturerDashboardScreen() {
     }, 100);
   }, [directMessages, panelView]);
 
-  // ─── render ─────────────────────────────────────────────────────────────
-
   return (
     <RequireAuth>
       <Page>
@@ -325,10 +485,9 @@ export default function LecturerDashboardScreen() {
           subtitle="Monitor student guidance progress, validate revisions, and dispatch structured feedback in one centralized workspace."
         />
 
-        {/* ── error banner ── */}
         {error ? (
           <Card style={styles.errorCard}>
-            <AlertIcon color="#ef4444" size={18} />
+            <AlertIcon color="#DC2626" size={18} />
             <Text style={styles.errorText}>{error}</Text>
           </Card>
         ) : null}
@@ -338,22 +497,22 @@ export default function LecturerDashboardScreen() {
           <StatCard
             label="Active Students"
             value={stats?.student_count ?? students.length}
-            glowColor="#6366f1"
+            glowColor="#4F46E5"
           />
           <StatCard
             label="Pending Revisions"
             value={pendingAcrossAll.length}
-            glowColor="#f59e0b"
+            glowColor="#D97706"
           />
           <StatCard
             label="Awaiting Validation"
             value={fixedAwaitingValidation.length}
-            glowColor="#06b6d4"
+            glowColor="#0891B2"
           />
           <StatCard
             label="Avg. Completion"
             value={stats ? `${stats.completion_rate}%` : "0%"}
-            glowColor="#10b981"
+            glowColor="#059669"
           />
         </View>
 
@@ -362,14 +521,14 @@ export default function LecturerDashboardScreen() {
           {/* ── LEFT: Student Roster ── */}
           <Card style={styles.rosterCard}>
             <SectionHeader
-              icon={<ProfileIcon color="#6366f1" size={18} />}
+              icon={<ProfileIcon color="#4F46E5" size={18} />}
               title="Student Roster"
             />
 
             <View style={styles.rosterList}>
               {students.length === 0 && (
                 <View style={styles.empty}>
-                  <ProfileIcon color="#475569" size={28} />
+                  <ProfileIcon color="#64748B" size={28} />
                   <Text style={styles.emptyText}>No supervised students found.</Text>
                 </View>
               )}
@@ -396,7 +555,7 @@ export default function LecturerDashboardScreen() {
                     style={({ pressed }) => [
                       styles.rosterItem,
                       isSelected && styles.rosterItemSelected,
-                      isSelected && (getGlowStyle("#6366f1", 0.12) as any),
+                      isSelected && (getGlowStyle("#4F46E5", 0.08) as any),
                       !isSelected && isHovered && styles.rosterItemHovered,
                       { transform: [{ scale: pressed ? 0.985 : 1 }] },
                     ]}
@@ -404,15 +563,15 @@ export default function LecturerDashboardScreen() {
                     <View style={styles.rosterItemRow}>
                       <View style={[styles.avatarCircle, isSelected && styles.avatarCircleActive]}>
                         <ProfileIcon
-                          color={isSelected ? "#ffffff" : "#64748b"}
+                          color={isSelected ? "#ffffff" : "#94A3B8"}
                           size={16}
                         />
                       </View>
                       <View style={styles.rosterItemInfo}>
-                        <Text style={styles.rosterName} numberOfLines={1}>
+                        <Text style={[styles.rosterName, isSelected && { color: "#ffffff" }]} numberOfLines={1}>
                           {student.name}
                         </Text>
-                        <Text style={styles.rosterNim}>NIM {student.nim}</Text>
+                        <Text style={styles.rosterNim}>Student ID: {student.nim}</Text>
                       </View>
                       <Badge text={sl} color={sc} />
                     </View>
@@ -423,19 +582,19 @@ export default function LecturerDashboardScreen() {
                         <Text style={styles.rosterStatLabel}>Sessions</Text>
                       </View>
                       <View style={styles.rosterStat}>
-                        <Text style={[styles.rosterStatVal, pending > 0 && { color: "#f59e0b" }]}>
+                        <Text style={[styles.rosterStatVal, pending > 0 && { color: "#D97706" }]}>
                           {pending}
                         </Text>
                         <Text style={styles.rosterStatLabel}>Pending</Text>
                       </View>
                       <View style={styles.rosterStat}>
-                        <Text style={[styles.rosterStatVal, fixed > 0 && { color: "#06b6d4" }]}>
+                        <Text style={[styles.rosterStatVal, fixed > 0 && { color: "#0891B2" }]}>
                           {fixed}
                         </Text>
                         <Text style={styles.rosterStatLabel}>To Validate</Text>
                       </View>
                       <View style={styles.rosterStat}>
-                        <Text style={[styles.rosterStatVal, validated > 0 && { color: "#10b981" }]}>
+                        <Text style={[styles.rosterStatVal, validated > 0 && { color: "#059669" }]}>
                           {validated}
                         </Text>
                         <Text style={styles.rosterStatLabel}>Validated</Text>
@@ -451,16 +610,15 @@ export default function LecturerDashboardScreen() {
           <View style={styles.detailCol}>
             {selectedStudent ? (
               <>
-                {/* Student identity header */}
                 <Card style={styles.studentHeaderCard}>
                   <View style={styles.studentHeaderRow}>
                     <View style={styles.avatarLarge}>
-                      <ProfileIcon color="#94a3b8" size={28} />
+                      <ProfileIcon color="#6366F1" size={28} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.studentName}>{selectedStudent.name}</Text>
                       <Text style={styles.studentMeta}>
-                        NIM {selectedStudent.nim} · {selectedStudent.prodi}
+                        Student ID: {selectedStudent.nim} · Department: {selectedStudent.prodi}
                       </Text>
                     </View>
                     {(() => {
@@ -473,7 +631,7 @@ export default function LecturerDashboardScreen() {
 
                   {/* Thesis title */}
                   <View style={styles.thesisBox}>
-                    <ArchiveIcon color="#475569" size={13} />
+                    <ArchiveIcon color="#94A3B8" size={13} />
                     <Text style={styles.thesisText} numberOfLines={3}>
                       {selectedStudent.thesis_title || "No thesis title recorded yet."}
                     </Text>
@@ -510,7 +668,7 @@ export default function LecturerDashboardScreen() {
                 {panelView === "overview" && (
                   <Card style={styles.panelCard}>
                     <SectionHeader
-                      icon={<CheckCircleIcon color="#10b981" size={16} />}
+                      icon={<CheckCircleIcon color="#059669" size={16} />}
                       title="Guidance Progress"
                     />
                     {(() => {
@@ -525,10 +683,10 @@ export default function LecturerDashboardScreen() {
                         <>
                           <View style={styles.progressRow}>
                             {[
-                              { label: "Total Sessions", val: sessions, color: "#6366f1" },
-                              { label: "Pending", val: pending, color: "#f59e0b" },
-                              { label: "Awaiting Validation", val: fixed, color: "#06b6d4" },
-                              { label: "Validated", val: validated, color: "#10b981" },
+                              { label: "Total Sessions", val: sessions, color: "#4F46E5" },
+                              { label: "Pending", val: pending, color: "#D97706" },
+                              { label: "Awaiting Validation", val: fixed, color: "#0891B2" },
+                              { label: "Validated", val: validated, color: "#059669" },
                             ].map((item) => (
                               <View key={item.label} style={styles.progressItem}>
                                 <Text
@@ -587,7 +745,7 @@ export default function LecturerDashboardScreen() {
                 {panelView === "revisions" && (
                   <Card style={styles.panelCard}>
                     <SectionHeader
-                      icon={<ClockIcon color="#f59e0b" size={16} />}
+                      icon={<ClockIcon color="#D97706" size={16} />}
                       title="Revision Items"
                     />
 
@@ -601,7 +759,7 @@ export default function LecturerDashboardScreen() {
                       <TextInput
                         value={feedbackText}
                         onChangeText={setFeedbackText}
-                        placeholder="Describe the revision requirement in detail (e.g., 'Perdalam latar belakang' or 'Perbaiki tata cara sitasi'...) "
+                        placeholder="Describe the revision requirement in detail (e.g., 'Expand literature review background' or 'Correct citation formatting guidelines')."
                         placeholderTextColor="#475569"
                         multiline
                         numberOfLines={3}
@@ -631,10 +789,10 @@ export default function LecturerDashboardScreen() {
                           const isFixed = item.status === "Fixed";
                           const isValidated = item.status === "Validated";
                           const iColor = isPending
-                            ? "#f59e0b"
+                            ? "#D97706"
                             : isFixed
-                            ? "#06b6d4"
-                            : "#10b981";
+                            ? "#0891B2"
+                            : "#059669";
 
                           return (
                             <View key={item.id} style={styles.feedbackItem}>
@@ -644,24 +802,51 @@ export default function LecturerDashboardScreen() {
                                   color={iColor}
                                 />
                                 {isFixed && (
-                                  <Pressable
-                                    onPress={() => handleValidate(item.id)}
-                                    disabled={validatingId === item.id}
-                                    style={({ pressed }) => [
-                                      styles.validateBtn,
-                                      { opacity: validatingId === item.id ? 0.5 : pressed ? 0.8 : 1 },
-                                    ]}
-                                  >
-                                    <CheckCircleIcon color="#10b981" size={14} />
-                                    <Text style={styles.validateBtnText}>
-                                      {validatingId === item.id ? "Validating…" : "Validate"}
-                                    </Text>
-                                  </Pressable>
+                                  <View style={{ flexDirection: "row", gap: 8 }}>
+                                    <Pressable
+                                      onPress={() => handleValidate(item.id)}
+                                      disabled={validatingId === item.id}
+                                      style={({ pressed }) => [
+                                        styles.validateBtn,
+                                        { opacity: validatingId === item.id ? 0.5 : pressed ? 0.8 : 1 },
+                                      ]}
+                                    >
+                                      <CheckCircleIcon color="#059669" size={14} />
+                                      <Text style={styles.validateBtnText}>
+                                        {validatingId === item.id ? "Validating…" : "Approve"}
+                                      </Text>
+                                    </Pressable>
+                                    <Pressable
+                                      onPress={() => handleRejectFix(item.id)}
+                                      disabled={validatingId === item.id}
+                                      style={({ pressed }) => [
+                                        styles.rejectBtn,
+                                        { opacity: validatingId === item.id ? 0.5 : pressed ? 0.8 : 1 },
+                                      ]}
+                                    >
+                                      <AlertIcon color="#DC2626" size={14} />
+                                      <Text style={styles.rejectBtnText}>
+                                        {validatingId === item.id ? "Rejecting…" : "Reject"}
+                                      </Text>
+                                    </Pressable>
+                                  </View>
                                 )}
                                 {isValidated && (
-                                  <View style={styles.validatedTag}>
-                                    <CheckCircleIcon color="#10b981" size={13} />
-                                    <Text style={styles.validatedTagText}>Validated</Text>
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                    <View style={styles.validatedTag}>
+                                      <CheckCircleIcon color="#059669" size={13} />
+                                      <Text style={styles.validatedTagText}>Validated</Text>
+                                    </View>
+                                    <Pressable
+                                      onPress={() => handleRejectFix(item.id)}
+                                      disabled={validatingId === item.id}
+                                      style={({ pressed }) => [
+                                        styles.undoBtn,
+                                        { opacity: validatingId === item.id ? 0.5 : pressed ? 0.8 : 1 },
+                                      ]}
+                                    >
+                                      <Text style={styles.undoBtnText}>Undo</Text>
+                                    </Pressable>
                                   </View>
                                 )}
                               </View>
@@ -675,7 +860,7 @@ export default function LecturerDashboardScreen() {
                         (l) => (l.feedback_items ?? []).length === 0
                       ) && (
                         <View style={styles.empty}>
-                          <CheckCircleIcon color="#10b981" size={24} />
+                          <CheckCircleIcon color="#059669" size={24} />
                           <Text style={styles.emptyText}>
                             No revision items recorded for this student yet.
                           </Text>
@@ -689,13 +874,13 @@ export default function LecturerDashboardScreen() {
                 {panelView === "sessions" && (
                   <Card style={styles.panelCard}>
                     <SectionHeader
-                      icon={<ArchiveIcon color="#06b6d4" size={16} />}
+                      icon={<ArchiveIcon color="#0891B2" size={16} />}
                       title="Session History"
                     />
 
                     {selectedStudentLogs.length === 0 ? (
                       <View style={styles.empty}>
-                        <ArchiveIcon color="#475569" size={28} />
+                        <ArchiveIcon color="#64748B" size={28} />
                         <Text style={styles.emptyText}>
                           No consultation sessions recorded yet.
                         </Text>
@@ -744,10 +929,10 @@ export default function LecturerDashboardScreen() {
                                     }
                                     color={
                                       pendingItems > 0
-                                        ? "#f59e0b"
+                                        ? "#D97706"
                                         : validatedItems === totalItems && totalItems > 0
-                                        ? "#10b981"
-                                        : "#6366f1"
+                                        ? "#059669"
+                                        : "#4F46E5"
                                     }
                                   />
                                 </View>
@@ -762,14 +947,14 @@ export default function LecturerDashboardScreen() {
                                   {log.audio_filename && (
                                     <View style={styles.sessionFileTag}>
                                       <Text style={styles.sessionFileTagText}>
-                                        🎙 Audio
+                                        Audio
                                       </Text>
                                     </View>
                                   )}
                                   {log.paper_filename && (
                                     <View style={styles.sessionFileTag}>
                                       <Text style={styles.sessionFileTagText}>
-                                        📄 Paper
+                                        Paper
                                       </Text>
                                     </View>
                                   )}
@@ -790,7 +975,7 @@ export default function LecturerDashboardScreen() {
                 {panelView === "chat" && (
                   <Card style={[styles.panelCard, { height: 500 }]}>
                     <SectionHeader
-                      icon={<ClockIcon color="#06b6d4" size={16} />}
+                      icon={<ClockIcon color="#0891B2" size={16} />}
                       title="Direct Chat Consultation"
                     />
                     {latestLog ? (
@@ -800,9 +985,9 @@ export default function LecturerDashboardScreen() {
                           showsVerticalScrollIndicator={true}
                           style={{
                             flex: 1,
-                            backgroundColor: "rgba(2, 6, 23, 0.3)",
+                            backgroundColor: "rgba(15, 23, 42, 0.6)",
                             borderWidth: 1,
-                            borderColor: "rgba(255, 255, 255, 0.03)",
+                            borderColor: "rgba(255, 255, 255, 0.06)",
                             borderRadius: 14,
                             padding: 12,
                           }}
@@ -823,22 +1008,22 @@ export default function LecturerDashboardScreen() {
                                   },
                                   isUser
                                     ? {
-                                        backgroundColor: "rgba(99, 102, 241, 0.15)",
+                                        backgroundColor: "rgba(99, 102, 241, 0.12)",
                                         borderWidth: 1,
-                                        borderColor: "rgba(99, 102, 241, 0.2)",
+                                        borderColor: "rgba(99, 102, 241, 0.22)",
                                         alignSelf: "flex-end",
                                       }
                                     : {
-                                        backgroundColor: "rgba(30, 41, 59, 0.4)",
+                                        backgroundColor: "rgba(255, 255, 255, 0.04)",
                                         borderWidth: 1,
-                                        borderColor: "rgba(255, 255, 255, 0.05)",
+                                        borderColor: "rgba(255, 255, 255, 0.08)",
                                         alignSelf: "flex-start",
                                       },
                                 ]}
                               >
                                 <Text
                                   style={{
-                                    color: "#64748b",
+                                    color: "#94A3B8",
                                     fontSize: 9,
                                     fontWeight: "900",
                                     letterSpacing: 1.5,
@@ -848,7 +1033,7 @@ export default function LecturerDashboardScreen() {
                                 </Text>
                                 <Text
                                   style={{
-                                    color: "#ffffff",
+                                    color: "#F8FAFC",
                                     fontSize: 13,
                                     lineHeight: 18,
                                     fontWeight: "500",
@@ -859,11 +1044,12 @@ export default function LecturerDashboardScreen() {
                               </View>
                             );
                           })}
-                          {!directMessages.length && (
+                          {chatLoading && <TypingIndicator label="SENDING MESSAGE" color="#0891B2" />}
+                          {!directMessages.length && !chatLoading && (
                             <View style={{ paddingVertical: 60, alignItems: "center" }}>
                               <Text
                                 style={{
-                                  color: "#475569",
+                                  color: "#94A3B8",
                                   fontSize: 12.5,
                                   fontWeight: "600",
                                   textAlign: "center",
@@ -881,33 +1067,37 @@ export default function LecturerDashboardScreen() {
                           <TextInput
                             value={chatQuery}
                             onChangeText={setChatQuery}
-                            placeholder="Type a message to the student..."
+                            editable={!chatLoading}
+                            placeholder={chatLoading ? "Sending message..." : "Type a message to the student..."}
                             placeholderTextColor="#475569"
                             onSubmitEditing={() => void sendDirectMessage()}
                             style={{
                               flex: 1,
-                              backgroundColor: "rgba(2, 6, 23, 0.5)",
+                              backgroundColor: "rgba(255, 255, 255, 0.03)",
                               borderWidth: 1,
-                              borderColor: "rgba(255, 255, 255, 0.05)",
+                              borderColor: "rgba(255, 255, 255, 0.08)",
                               borderRadius: 12,
-                              color: "#ffffff",
+                              color: "#F8FAFC",
                               paddingHorizontal: 14,
                               paddingVertical: 12,
                               fontSize: 13,
                               fontWeight: "500",
                               outlineStyle: "none",
+                              opacity: chatLoading ? 0.6 : 1,
                             } as any}
                           />
                           <Pressable
                             onPress={() => void sendDirectMessage()}
+                            disabled={chatLoading || !chatQuery.trim()}
                             style={{
-                              backgroundColor: "#6366f1",
+                              backgroundColor: "#4F46E5",
                               paddingHorizontal: 16,
                               paddingVertical: 12,
                               borderRadius: 12,
                               alignSelf: "stretch",
                               alignItems: "center",
                               justifyContent: "center",
+                              opacity: chatLoading || !chatQuery.trim() ? 0.5 : 1,
                             }}
                           >
                             <Text style={{ color: "#ffffff", fontSize: 13, fontWeight: "800" }}>
@@ -918,7 +1108,7 @@ export default function LecturerDashboardScreen() {
                       </View>
                     ) : (
                       <View style={styles.empty}>
-                        <ArchiveIcon color="#475569" size={28} />
+                        <ArchiveIcon color="#64748B" size={28} />
                         <Text style={styles.emptyText}>
                           No logs found for this student. Messages cannot be sent without an active log.
                         </Text>
@@ -929,7 +1119,7 @@ export default function LecturerDashboardScreen() {
               </>
             ) : (
               <Card style={styles.noSelectionCard}>
-                <ProfileIcon color="#334155" size={40} />
+                <ProfileIcon color="#64748B" size={40} />
                 <Text style={styles.noSelectionText}>
                   Select a student from the roster to view detailed guidance information.
                 </Text>
@@ -941,13 +1131,13 @@ export default function LecturerDashboardScreen() {
         {/* ── bottom: Validation Queue ── */}
         <Card style={styles.validationQueueCard}>
           <SectionHeader
-            icon={<AlertIcon color="#06b6d4" size={18} />}
+            icon={<AlertIcon color="#0891B2" size={18} />}
             title="Validation Queue — Student Revisions Awaiting Review"
           />
 
           {fixedAwaitingValidation.length === 0 ? (
             <View style={styles.empty}>
-              <CheckCircleIcon color="#10b981" size={28} />
+              <CheckCircleIcon color="#059669" size={28} />
               <Text style={styles.emptyText}>
                 No revisions awaiting validation. All submissions are up to date.
               </Text>
@@ -955,7 +1145,6 @@ export default function LecturerDashboardScreen() {
           ) : (
             <View style={styles.queueGrid}>
               {fixedAwaitingValidation.map((item) => {
-                // Find which log this item belongs to for student context
                 const parentLog = logs.find((l) =>
                   (l.feedback_items ?? []).some((f) => f.id === item.id)
                 );
@@ -968,36 +1157,101 @@ export default function LecturerDashboardScreen() {
                     <View style={styles.queueItemHeader}>
                       <View style={styles.queueStudentInfo}>
                         <View style={styles.queueAvatarSmall}>
-                          <ProfileIcon color="#64748b" size={12} />
+                          <ProfileIcon color="#64748B" size={12} />
                         </View>
                         <Text style={styles.queueStudentName}>
                           {parentStudent?.name ?? "Unknown Student"}
                         </Text>
                       </View>
-                      <Badge text={item.category} color={item.category === "Major" ? "#ef4444" : "#6366f1"} />
+                      <Badge text={item.category} color={item.category === "Major" ? "#DC2626" : "#4F46E5"} />
                     </View>
                     <Text style={styles.queueItemContent} numberOfLines={2}>
                       {item.content}
                     </Text>
-                    <Pressable
-                      onPress={() => handleValidate(item.id)}
-                      disabled={validatingId === item.id}
-                      style={({ pressed }) => [
-                        styles.validateQueueBtn,
-                        { opacity: validatingId === item.id ? 0.5 : pressed ? 0.85 : 1 },
-                      ]}
-                    >
-                      <CheckCircleIcon color="#10b981" size={14} />
-                      <Text style={styles.validateQueueBtnText}>
-                        {validatingId === item.id ? "Validating…" : "Mark as Validated"}
-                      </Text>
-                    </Pressable>
+                    <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+                      <Pressable
+                        onPress={() => handleValidate(item.id)}
+                        disabled={validatingId === item.id}
+                        style={({ pressed }) => [
+                          styles.validateQueueBtn,
+                          { flex: 1, opacity: validatingId === item.id ? 0.5 : pressed ? 0.85 : 1 },
+                        ]}
+                      >
+                        <CheckCircleIcon color="#059669" size={14} />
+                        <Text style={styles.validateQueueBtnText}>
+                          {validatingId === item.id ? "Validating…" : "Approve Fix"}
+                        </Text>
+                      </Pressable>
+
+                      <Pressable
+                        onPress={() => handleRejectFix(item.id)}
+                        disabled={validatingId === item.id}
+                        style={({ pressed }) => [
+                          styles.rejectQueueBtn,
+                          { flex: 1, opacity: validatingId === item.id ? 0.5 : pressed ? 0.85 : 1 },
+                        ]}
+                      >
+                        <AlertIcon color="#DC2626" size={14} />
+                        <Text style={styles.rejectQueueBtnText}>
+                          {validatingId === item.id ? "Rejecting…" : "Reject Fix"}
+                        </Text>
+                      </Pressable>
+                    </View>
                   </View>
                 );
               })}
             </View>
           )}
         </Card>
+        
+        {/* Floating Toast Notification Container */}
+        <View style={{ position: Platform.OS === "web" ? "fixed" : "absolute", top: 80, right: 20, zIndex: 99999, gap: 10, width: 320 }}>
+          {toasts.map(toast => {
+            const translateAnim = toast.animatedValue.interpolate({
+              inputRange: [0, 1],
+              outputRange: [340, 0], // slide from right
+            });
+            const opacityAnim = toast.animatedValue;
+            
+            let icon = "🔔";
+            let color = "#6366F1";
+            if (toast.type === "chat") {
+              icon = "💬";
+              color = "#0891B2";
+            } else if (toast.type === "revision") {
+              icon = "✅";
+              color = "#059669";
+            }
+            
+            return (
+              <Animated.View
+                key={toast.id}
+                style={[
+                  {
+                    opacity: opacityAnim,
+                    transform: [{ translateX: translateAnim }],
+                    padding: 16,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: "rgba(255, 255, 255, 0.08)",
+                    backgroundColor: "rgba(15, 23, 42, 0.95)",
+                    flexDirection: "row",
+                    gap: 12,
+                    alignItems: "center",
+                  },
+                  getGlassStyle(0.2, 14) as any,
+                  getGlowStyle(color, 0.1) as any,
+                ]}
+              >
+                <Text style={{ fontSize: 20 }}>{icon}</Text>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ color: "#ffffff", fontSize: 13, fontWeight: "800" }}>{toast.title}</Text>
+                  <Text style={{ color: "#CBD5E1", fontSize: 11, fontWeight: "500" }} numberOfLines={2}>{toast.message}</Text>
+                </View>
+              </Animated.View>
+            );
+          })}
+        </View>
       </Page>
     </RequireAuth>
   );
@@ -1010,12 +1264,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
-    borderColor: "rgba(239, 68, 68, 0.2)",
+    backgroundColor: "rgba(220, 38, 38, 0.06)",
+    borderColor: "rgba(220, 38, 38, 0.15)",
     padding: 16,
   },
   errorText: {
-    color: "#fca5a5",
+    color: "#DC2626",
     fontSize: 14,
     fontWeight: "600",
   },
@@ -1045,9 +1299,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   rosterItem: {
-    backgroundColor: "rgba(9, 13, 26, 0.5)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     borderRadius: 16,
     padding: 16,
     gap: 12,
@@ -1059,8 +1313,8 @@ const styles = StyleSheet.create({
     borderColor: "rgba(99, 102, 241, 0.25)",
   },
   rosterItemHovered: {
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-    borderColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   rosterItemRow: {
     flexDirection: "row",
@@ -1079,20 +1333,20 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   avatarCircleActive: {
-    backgroundColor: "#6366f1",
-    borderColor: "#6366f1",
+    backgroundColor: "#6366F1",
+    borderColor: "#6366F1",
   },
   rosterItemInfo: {
     flex: 1,
   },
   rosterName: {
-    color: "#f8fafc",
+    color: "#F8FAFC",
     fontSize: 14,
     fontWeight: "800",
     letterSpacing: -0.2,
   },
   rosterNim: {
-    color: "#475569",
+    color: "#94A3B8",
     fontSize: 11,
     fontWeight: "600",
     marginTop: 2,
@@ -1100,24 +1354,24 @@ const styles = StyleSheet.create({
   rosterStats: {
     flexDirection: "row",
     justifyContent: "space-between",
-    backgroundColor: "rgba(2, 6, 23, 0.4)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.02)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
   },
   rosterStat: {
     alignItems: "center",
     gap: 2,
   },
   rosterStatVal: {
-    color: "#e2e8f0",
+    color: "#F8FAFC",
     fontSize: 16,
     fontWeight: "900",
     letterSpacing: -0.5,
   },
   rosterStatLabel: {
-    color: "#475569",
+    color: "#94A3B8",
     fontSize: 9,
     fontWeight: "700",
     textTransform: "uppercase",
@@ -1144,20 +1398,20 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 99,
-    backgroundColor: "rgba(99, 102, 241, 0.08)",
+    backgroundColor: "rgba(99, 102, 241, 0.06)",
     borderWidth: 1,
-    borderColor: "rgba(99, 102, 241, 0.18)",
+    borderColor: "rgba(99, 102, 241, 0.15)",
     alignItems: "center",
     justifyContent: "center",
   },
   studentName: {
-    color: "#ffffff",
+    color: "#F8FAFC",
     fontSize: 20,
     fontWeight: "900",
     letterSpacing: -0.5,
   },
   studentMeta: {
-    color: "#475569",
+    color: "#94A3B8",
     fontSize: 12,
     fontWeight: "600",
     marginTop: 2,
@@ -1166,15 +1420,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     alignItems: "flex-start",
-    backgroundColor: "rgba(2, 6, 23, 0.4)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     padding: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
   },
   thesisText: {
     flex: 1,
-    color: "#94a3b8",
+    color: "#CBD5E1",
     fontSize: 12,
     lineHeight: 18,
     fontWeight: "500",
@@ -1187,24 +1441,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: "rgba(2, 6, 23, 0.4)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     transition: "all 0.2s ease-in-out",
   } as any,
   tabActive: {
-    backgroundColor: "rgba(99, 102, 241, 0.12)",
-    borderColor: "rgba(99, 102, 241, 0.3)",
+    backgroundColor: "rgba(99, 102, 241, 0.08)",
+    borderColor: "rgba(99, 102, 241, 0.15)",
   },
   tabText: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 0.3,
     textTransform: "uppercase",
   },
   tabTextActive: {
-    color: "#a5b4fc",
+    color: "#6366F1",
   },
 
   panelCard: {
@@ -1224,20 +1478,20 @@ const styles = StyleSheet.create({
     gap: 4,
     flex: 1,
     minWidth: 70,
-    backgroundColor: "rgba(2, 6, 23, 0.4)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
   },
   progressVal: {
-    color: "#6366f1",
+    color: "#6366F1",
     fontSize: 28,
     fontWeight: "900",
     letterSpacing: -1,
   },
   progressLabel: {
-    color: "#475569",
+    color: "#94A3B8",
     fontSize: 10,
     fontWeight: "700",
     textTransform: "uppercase",
@@ -1251,72 +1505,71 @@ const styles = StyleSheet.create({
   barTrack: {
     height: 6,
     borderRadius: 99,
-    backgroundColor: "rgba(99, 102, 241, 0.1)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
     overflow: "hidden",
   },
   barFill: {
     height: "100%",
     borderRadius: 99,
-    backgroundColor: "#6366f1",
-    backgroundImage: "linear-gradient(90deg, #6366f1, #06b6d4)",
+    backgroundColor: "#6366F1",
     transition: "width 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
   } as any,
   barLabel: {
-    color: "#475569",
+    color: "#94A3B8",
     fontSize: 11,
     fontWeight: "600",
   },
   snapshotBox: {
-    backgroundColor: "rgba(2, 6, 23, 0.5)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderRadius: 14,
     padding: 16,
     gap: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
   },
   snapshotLabel: {
-    color: "#475569",
+    color: "#94A3B8",
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 1.5,
     textTransform: "uppercase",
   },
   snapshotDate: {
-    color: "#6366f1",
+    color: "#6366F1",
     fontSize: 12,
     fontWeight: "700",
   },
   snapshotText: {
-    color: "#94a3b8",
+    color: "#CBD5E1",
     fontSize: 13,
     lineHeight: 20,
     fontWeight: "500",
   },
   snapshotEmpty: {
-    color: "#334155",
+    color: "#64748B",
     fontSize: 12,
     fontStyle: "italic",
   },
 
   // Revisions tab — feedback composer
   feedbackComposer: {
-    backgroundColor: "rgba(2, 6, 23, 0.4)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderRadius: 16,
     padding: 18,
     gap: 12,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   composerLabel: {
-    color: "#475569",
+    color: "#6366F1",
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1.5,
     textTransform: "uppercase",
   },
   composerSubLabel: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 12,
     lineHeight: 18,
     fontWeight: "500",
@@ -1331,16 +1584,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: "rgba(2, 6, 23, 0.5)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     transition: "all 0.2s ease",
   } as any,
   categoryBtnActive: {
     backgroundColor: "rgba(99, 102, 241, 0.08)",
   },
   categoryBtnText: {
-    color: "#475569",
+    color: "#CBD5E1",
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 0.5,
@@ -1349,10 +1602,10 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   feedbackInput: {
-    color: "#f8fafc",
-    backgroundColor: "rgba(2, 6, 23, 0.5)",
+    color: "#F8FAFC",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     borderRadius: 12,
     padding: 14,
     fontSize: 14,
@@ -1363,12 +1616,12 @@ const styles = StyleSheet.create({
     transition: "border-color 0.2s ease",
   } as any,
   feedbackSuccessText: {
-    color: "#10b981",
+    color: "#059669",
     fontSize: 12,
     fontWeight: "700",
   },
   feedbackErrorText: {
-    color: "#ef4444",
+    color: "#DC2626",
     fontSize: 12,
     fontWeight: "700",
   },
@@ -1378,12 +1631,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   feedbackItem: {
-    backgroundColor: "rgba(2, 6, 23, 0.35)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderRadius: 14,
     padding: 16,
     gap: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
   },
   feedbackItemHeader: {
     flexDirection: "row",
@@ -1393,7 +1646,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   feedbackItemContent: {
-    color: "#cbd5e1",
+    color: "#CBD5E1",
     fontSize: 13,
     lineHeight: 20,
     fontWeight: "500",
@@ -1405,13 +1658,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: "rgba(16, 185, 129, 0.08)",
+    backgroundColor: "rgba(5, 150, 105, 0.06)",
     borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.2)",
+    borderColor: "rgba(5, 150, 105, 0.15)",
     transition: "all 0.2s ease",
   } as any,
   validateBtnText: {
-    color: "#10b981",
+    color: "#059669",
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.3,
@@ -1422,7 +1675,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   validatedTagText: {
-    color: "#10b981",
+    color: "#059669",
     fontSize: 11,
     fontWeight: "700",
   },
@@ -1445,15 +1698,15 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 99,
-    backgroundColor: "rgba(99, 102, 241, 0.1)",
+    backgroundColor: "rgba(99, 102, 241, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(99, 102, 241, 0.25)",
+    borderColor: "rgba(99, 102, 241, 0.15)",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
   sessionIndexText: {
-    color: "#818cf8",
+    color: "#6366F1",
     fontSize: 11,
     fontWeight: "900",
   },
@@ -1477,13 +1730,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sessionDate: {
-    color: "#f8fafc",
+    color: "#F8FAFC",
     fontSize: 13,
     fontWeight: "800",
     letterSpacing: -0.2,
   },
   sessionSnippet: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 12,
     lineHeight: 18,
     fontWeight: "500",
@@ -1498,17 +1751,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
-    backgroundColor: "rgba(99, 102, 241, 0.07)",
+    backgroundColor: "rgba(99, 102, 241, 0.06)",
     borderWidth: 1,
     borderColor: "rgba(99, 102, 241, 0.12)",
   },
   sessionFileTagText: {
-    color: "#94a3b8",
+    color: "#6366F1",
     fontSize: 10,
     fontWeight: "700",
   },
   sessionFeedbackCount: {
-    color: "#334155",
+    color: "#94A3B8",
     fontSize: 11,
     fontWeight: "600",
     marginLeft: 4,
@@ -1524,7 +1777,7 @@ const styles = StyleSheet.create({
     minHeight: 240,
   },
   noSelectionText: {
-    color: "#334155",
+    color: "#94A3B8",
     fontSize: 14,
     textAlign: "center",
     fontWeight: "600",
@@ -1545,9 +1798,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 280,
     maxWidth: "48%" as any,
-    backgroundColor: "rgba(2, 6, 23, 0.4)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.12)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     borderRadius: 16,
     padding: 18,
     gap: 10,
@@ -1569,19 +1822,19 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 99,
-    backgroundColor: "rgba(99, 102, 241, 0.08)",
+    backgroundColor: "rgba(99, 102, 241, 0.06)",
     borderWidth: 1,
-    borderColor: "rgba(99, 102, 241, 0.15)",
+    borderColor: "rgba(99, 102, 241, 0.12)",
     alignItems: "center",
     justifyContent: "center",
   },
   queueStudentName: {
-    color: "#94a3b8",
+    color: "#CBD5E1",
     fontSize: 12,
     fontWeight: "700",
   },
   queueItemContent: {
-    color: "#cbd5e1",
+    color: "#CBD5E1",
     fontSize: 13,
     lineHeight: 20,
     fontWeight: "500",
@@ -1593,14 +1846,64 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 9,
     borderRadius: 10,
-    backgroundColor: "rgba(16, 185, 129, 0.07)",
+    backgroundColor: "rgba(5, 150, 105, 0.06)",
     borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.2)",
+    borderColor: "rgba(5, 150, 105, 0.15)",
     transition: "all 0.2s ease",
   } as any,
   validateQueueBtnText: {
-    color: "#10b981",
+    color: "#059669",
     fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  rejectQueueBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: "rgba(220, 38, 38, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(220, 38, 38, 0.15)",
+  } as any,
+  rejectQueueBtnText: {
+    color: "#DC2626",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  rejectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(220, 38, 38, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(220, 38, 38, 0.15)",
+  } as any,
+  rejectBtnText: {
+    color: "#DC2626",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  undoBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "rgba(217, 119, 6, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(217, 119, 6, 0.15)",
+  } as any,
+  undoBtnText: {
+    color: "#D97706",
+    fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.3,
   },
@@ -1614,7 +1917,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   emptyText: {
-    color: "#475569",
+    color: "#94A3B8",
     fontSize: 13,
     fontWeight: "600",
     textAlign: "center",
@@ -1629,21 +1932,20 @@ const styles = StyleSheet.create({
     transition: "all 0.25s ease",
   } as any,
   pillBtnInactive: {
-    backgroundColor: "rgba(2, 6, 23, 0.3)",
-    borderColor: "rgba(255,255,255,0.03)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   pillBtnActiveMajor: {
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
-    borderColor: "#ef4444",
-    boxShadow: "0 0 10px rgba(239,68,68,0.15)",
+    backgroundColor: "rgba(220, 38, 38, 0.06)",
+    borderColor: "#DC2626",
+    boxShadow: "0 0 10px rgba(220, 38, 38, 0.1)",
   } as any,
   pillBtnActiveMinor: {
-    backgroundColor: "rgba(99, 102, 241, 0.1)",
-    borderColor: "#6366f1",
-    boxShadow: "0 0 10px rgba(99,102,241,0.15)",
+    backgroundColor: "rgba(79, 70, 229, 0.06)",
+    borderColor: "#4F46E5",
+    boxShadow: "0 0 10px rgba(79, 70, 229, 0.1)",
   } as any,
   pillText: {
-    color: "#ffffff",
     fontSize: 11,
     fontWeight: "900",
     letterSpacing: 1,

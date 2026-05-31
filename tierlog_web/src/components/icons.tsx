@@ -8,35 +8,46 @@ export type IconProps = {
   style?: object;
 };
 
-// Styling helper for glassmorphic elements
-export const getGlassStyle = (opacity = 0.45, blurRadius = 24) => {
+// ─── Heavy Obsidian Frosted Glass Card ────────────────────────────────
+// Dark technical glass with sub-pixel refraction and micro-noise grain
+export const getGlassStyle = (opacity = 0.72, blurRadius = 24) => {
   return {
-    backgroundColor: `rgba(9, 13, 26, ${opacity})`,
+    backgroundColor: `rgba(10, 15, 30, 0.72)`, // deep technical dark glass
     borderWidth: 1,
-    borderColor: "rgba(99, 102, 241, 0.12)",
-    borderRadius: 20,
+    borderColor: "rgba(255, 255, 255, 0.08)", // subtle micro-edge border
+    borderRadius: 16,
     padding: 24,
     ...Platform.select({
       web: {
         backdropFilter: `blur(${blurRadius}px)`,
         WebkitBackdropFilter: `blur(${blurRadius}px)`,
-        boxShadow: "0 12px 40px 0 rgba(0, 0, 0, 0.45), inset 0 1px 0 0 rgba(255, 255, 255, 0.05)",
-        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        // Microscopic physical noise grain overlay (opacity 0.02)
+        backgroundImage: `linear-gradient(rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0.01)), url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.80' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.02'/%3E%3C/svg%3E")`,
+        // Double-pass border shadow + heavy premium ambient diffusion shadow
+        boxShadow: `
+          inset 0 1px 1px 0 rgba(255, 255, 255, 0.12), 
+          inset 0 -1px 1px 0 rgba(0, 0, 0, 0.35),
+          0 10px 15px -3px rgba(0, 0, 0, 0.5), 
+          0 20px 25px -5px rgba(0, 0, 0, 0.4)
+        ` as any,
+        WebkitFontSmoothing: "subpixel-antialiased",
+        MozOsxFontSmoothing: "grayscale",
+        transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
       },
       default: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
-        shadowRadius: 12,
-        elevation: 8,
+        shadowColor: "#000000",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.25,
+        shadowRadius: 16,
+        elevation: 4,
       },
     }),
   };
 };
 
-// Glow style helper for indicators and buttons with robust hex parsing
-export const getGlowStyle = (color = "#6366f1", intensity = 0.25) => {
-  let rgb = "99, 102, 241"; // default indigo
+// ─── Refined Muted Elevation/Tint Helper ─────────────────────────────
+export const getGlowStyle = (color = "#4F46E5", intensity = 0.08) => {
+  let rgb = "79, 70, 229"; // default indigo
   if (color.startsWith("#")) {
     const hex = color.replace("#", "");
     if (hex.length === 3) {
@@ -62,24 +73,24 @@ export const getGlowStyle = (color = "#6366f1", intensity = 0.25) => {
   } else if (color === "amber" || color === "warning") {
     rgb = "245, 158, 11";
   }
-  
+
   return Platform.select({
     web: {
-      boxShadow: `0 0 20px 0 rgba(${rgb}, ${intensity}), inset 0 0 0 1px rgba(${rgb}, ${intensity * 1.5})`,
-      borderColor: `rgba(${rgb}, ${intensity * 2})`,
-      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+      boxShadow: `0 8px 24px -4px rgba(${rgb}, ${intensity}), 0 4px 12px -2px rgba(${rgb}, ${intensity * 0.5})`,
+      borderColor: `rgba(${rgb}, ${intensity * 2.2})`,
+      transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
     },
     default: {
       shadowColor: color,
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: intensity * 2.5,
-      shadowRadius: 14,
-      elevation: 6,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: intensity * 1.5,
+      shadowRadius: 12,
+      elevation: 3,
     },
   });
 };
 
-// Unified SVG wrapper for standardizing visual renders on Web
+// ─── SVG Wrapper ────────────────────────────────────────────────────
 function SvgWrapper({
   size,
   children,
@@ -106,13 +117,11 @@ function SvgWrapper({
       </svg>
     );
   }
-
-  // Fallback for native wrapper or empty rendering (mostly web is target for tierlog_web)
   return null;
 }
 
-// 1. Dashboard Icon (Grid / Home Layout)
-export function DashboardIcon({ color = "#94a3b8", size = 20, style }: IconProps) {
+// 1. Dashboard Icon
+export function DashboardIcon({ color = "#64748B", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>
       <SvgWrapper size={size}>
@@ -125,8 +134,8 @@ export function DashboardIcon({ color = "#94a3b8", size = 20, style }: IconProps
   );
 }
 
-// 2. Consultation Icon (Chat Message Square)
-export function ConsultationIcon({ color = "#94a3b8", size = 20, style }: IconProps) {
+// 2. Consultation Icon
+export function ConsultationIcon({ color = "#64748B", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>
       <SvgWrapper size={size}>
@@ -136,8 +145,8 @@ export function ConsultationIcon({ color = "#94a3b8", size = 20, style }: IconPr
   );
 }
 
-// 3. Archive Icon (Inbox/Folder Box)
-export function ArchiveIcon({ color = "#94a3b8", size = 20, style }: IconProps) {
+// 3. Archive Icon
+export function ArchiveIcon({ color = "#64748B", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>
       <SvgWrapper size={size}>
@@ -149,8 +158,8 @@ export function ArchiveIcon({ color = "#94a3b8", size = 20, style }: IconProps) 
   );
 }
 
-// 4. Profile Icon (User Outline)
-export function ProfileIcon({ color = "#94a3b8", size = 20, style }: IconProps) {
+// 4. Profile Icon
+export function ProfileIcon({ color = "#64748B", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>
       <SvgWrapper size={size}>
@@ -161,8 +170,8 @@ export function ProfileIcon({ color = "#94a3b8", size = 20, style }: IconProps) 
   );
 }
 
-// 5. Security Icon (Lock Outline)
-export function SecurityIcon({ color = "#94a3b8", size = 20, style }: IconProps) {
+// 5. Security Icon
+export function SecurityIcon({ color = "#64748B", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>
       <SvgWrapper size={size}>
@@ -173,8 +182,8 @@ export function SecurityIcon({ color = "#94a3b8", size = 20, style }: IconProps)
   );
 }
 
-// 6. AI Gateway Icon (CPU / Chip Outline)
-export function AIGatewayIcon({ color = "#94a3b8", size = 20, style }: IconProps) {
+// 6. AI Gateway Icon
+export function AIGatewayIcon({ color = "#64748B", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>
       <SvgWrapper size={size}>
@@ -193,8 +202,8 @@ export function AIGatewayIcon({ color = "#94a3b8", size = 20, style }: IconProps
   );
 }
 
-// 7. Logout Icon (Log Out / Shift Exit)
-export function LogoutIcon({ color = "#94a3b8", size = 20, style }: IconProps) {
+// 7. Logout Icon
+export function LogoutIcon({ color = "#64748B", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>
       <SvgWrapper size={size}>
@@ -206,8 +215,8 @@ export function LogoutIcon({ color = "#94a3b8", size = 20, style }: IconProps) {
   );
 }
 
-// 8. Cloud Upload Icon (Arrow pointing up to Cloud)
-export function CloudUploadIcon({ color = "#94a3b8", size = 20, style }: IconProps) {
+// 8. Cloud Upload Icon
+export function CloudUploadIcon({ color = "#64748B", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>
       <SvgWrapper size={size}>
@@ -219,7 +228,7 @@ export function CloudUploadIcon({ color = "#94a3b8", size = 20, style }: IconPro
   );
 }
 
-// 9. Check Circle (Validated Tick)
+// 9. Check Circle
 export function CheckCircleIcon({ color = "#10b981", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>
@@ -231,7 +240,7 @@ export function CheckCircleIcon({ color = "#10b981", size = 20, style }: IconPro
   );
 }
 
-// 10. Clock Icon (Pending State Timer)
+// 10. Clock Icon
 export function ClockIcon({ color = "#f59e0b", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>
@@ -243,8 +252,8 @@ export function ClockIcon({ color = "#f59e0b", size = 20, style }: IconProps) {
   );
 }
 
-// 11. Chevron Right (Arrow navigation)
-export function ChevronRightIcon({ color = "#94a3b8", size = 20, style }: IconProps) {
+// 11. Chevron Right
+export function ChevronRightIcon({ color = "#64748B", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>
       <SvgWrapper size={size}>
@@ -254,7 +263,7 @@ export function ChevronRightIcon({ color = "#94a3b8", size = 20, style }: IconPr
   );
 }
 
-// 12. Alert Icon (Warning/Danger indicator)
+// 12. Alert Icon
 export function AlertIcon({ color = "#ef4444", size = 20, style }: IconProps) {
   return (
     <span style={{ color, display: "inline-flex", ...style }}>

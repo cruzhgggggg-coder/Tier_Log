@@ -53,6 +53,9 @@ export default function AIGatewayScreen() {
   const [activeTab, setActiveTab] = useState<string>("gemini");
   const [customModelInput, setCustomModelInput] = useState("");
   const [showCustomInput, setShowCustomInput] = useState(false);
+  const [dynamicNvidiaModels, setDynamicNvidiaModels] = useState<{ label: string; value: string; desc: string }[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchError, setFetchError] = useState("");
 
   // Set initial active tab based on preferred model provider
   useEffect(() => {
@@ -66,6 +69,59 @@ export default function AIGatewayScreen() {
       }
     }
   }, [user?.preferred_model]);
+
+  const loadDynamicNvidiaModels = async (key: string) => {
+    if (!key || key.length < 8) {
+      setDynamicNvidiaModels([]);
+      return;
+    }
+    setFetchingModels(true);
+    setFetchError("");
+    try {
+      const res = await api<{ models: string[] }>(`/api/ai/models?provider=nvidia&api_key=${encodeURIComponent(key)}`, {
+        auth: false
+      });
+      if (res && res.models && res.models.length > 0) {
+        const mapped = res.models.map((m) => {
+          let label = m;
+          if (m.includes("/")) {
+            const parts = m.split("/");
+            label = parts[parts.length - 1];
+          }
+          // Formatting nice labels, e.g. "meta/llama-3.1-70b-instruct" -> "Llama 3.1 70B Instruct"
+          label = label
+            .replace(/-/g, " ")
+            .replace(/\b\w/g, (char) => char.toUpperCase())
+            .trim();
+          
+          return {
+            label: label,
+            value: `nvidia:${m}`,
+            desc: `Dynamic model: ${m}`
+          };
+        });
+        // Sort alphabetically
+        mapped.sort((a, b) => a.label.localeCompare(b.label));
+        setDynamicNvidiaModels(mapped);
+      } else {
+        setDynamicNvidiaModels([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch dynamic NVIDIA models:", err);
+      setFetchError("Gagal mengambil daftar model dinamis dari NVIDIA NIM.");
+      setDynamicNvidiaModels([]);
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  useEffect(() => {
+    if (nvidiaKey && nvidiaKey.length > 8) {
+      void loadDynamicNvidiaModels(nvidiaKey);
+    } else {
+      setDynamicNvidiaModels([]);
+    }
+  }, [nvidiaKey]);
 
   const save = async (customKeys?: Partial<User>) => {
     setIsSaving(true);
@@ -157,13 +213,13 @@ export default function AIGatewayScreen() {
   const renderProviderStatus = (keyVal: string, providerName: string) => {
     const isPasted = activeAutoSaveProvider === providerName;
     if (isPasted) {
-      return <Badge text="SYNCING..." color="#06b6d4" />;
+      return <Badge text="SYNCING..." color="#0891B2" />;
     }
     const hasKey = keyVal && keyVal.length > 8;
     return hasKey ? (
-      <Badge text="CONNECTED" color="#10b981" />
+      <Badge text="CONNECTED" color="#059669" />
     ) : (
-      <Badge text="DISCONNECTED" color="#64748b" />
+      <Badge text="DISCONNECTED" color="#64748B" />
     );
   };
 
@@ -183,7 +239,7 @@ export default function AIGatewayScreen() {
         
         <Heading 
           title="AI Gateway Settings" 
-          subtitle="Configure preferred academic model intelligence, API credentials, and license options." 
+          subtitle="Configure your preferred model, API credentials, and license options." 
         />
 
         <View style={styles.layout}>
@@ -191,20 +247,20 @@ export default function AIGatewayScreen() {
           {/* Main Provider Form Card */}
           <Card style={[getGlassStyle(0.2, 20) as any, styles.mainCard]}>
             <View style={styles.sectionHeader}>
-              <AIGatewayIcon color="#8b5cf6" size={20} />
+              <AIGatewayIcon color="#7C3AED" size={20} />
               <Text style={styles.sectionTitle}>Provider API Keys & Preferences</Text>
             </View>
 
             <View style={styles.formGroup}>
               
-              {/* Dynamic Model Selector Terminal */}
+              {/* Dynamic Model Selector */}
               <View style={styles.selectorTerminal}>
-                <Text style={styles.gridSectionHeader}>PREFERRED INTELLIGENCE MODEL</Text>
+                <Text style={styles.gridSectionHeader}>PREFERRED MODEL</Text>
                 
                 {/* Active model summary */}
                 <View style={styles.activeModelSummary}>
-                  <ClockIcon color="#6366f1" size={16} />
-                  <Text style={styles.activeModelLabel}>ACTIVE SELECTION: </Text>
+                  <ClockIcon color="#4F46E5" size={16} />
+                  <Text style={styles.activeModelLabel}>ACTIVE: </Text>
                   <Text style={styles.activeModelValue}>{preferredModel.toUpperCase()}</Text>
                 </View>
 
@@ -219,6 +275,9 @@ export default function AIGatewayScreen() {
                         onPress={() => {
                           setActiveTab(provider);
                           setShowCustomInput(false);
+                          if (provider === "nvidia" && nvidiaKey && nvidiaKey.length > 8 && dynamicNvidiaModels.length === 0) {
+                            void loadDynamicNvidiaModels(nvidiaKey);
+                          }
                         }}
                         style={[
                           styles.tabItem,
@@ -229,13 +288,13 @@ export default function AIGatewayScreen() {
                         <Text style={[
                           styles.tabText,
                           active ? styles.tabTextActive : styles.tabTextInactive,
-                          connected && { color: "#10b981" }
+                          connected && { color: "#059669" }
                         ]}>
                           {provider.toUpperCase()}
                         </Text>
                         <View style={[
                           styles.tabIndicator,
-                          connected ? { backgroundColor: "#10b981" } : { backgroundColor: "transparent" }
+                          connected ? { backgroundColor: "#059669" } : { backgroundColor: "transparent" }
                         ]} />
                       </Pressable>
                     );
@@ -249,41 +308,64 @@ export default function AIGatewayScreen() {
                 </View>
 
                 {/* Models List for the active provider tab */}
-                {!showCustomInput ? (
+                 {!showCustomInput ? (
                   <View style={styles.modelsGrid}>
-                    {PROVIDER_MODELS[activeTab]?.map((model) => {
-                      const isSelected = preferredModel === model.value;
-                      const connected = hasKey(activeTab);
-
-                      return (
-                        <Pressable
-                          key={model.value}
-                          disabled={!connected}
-                          onPress={() => selectModel(model.value)}
-                          style={({ pressed }) => [
-                            styles.modelItemCard,
-                            isSelected ? styles.modelItemCardSelected : styles.modelItemCardNormal,
-                            !connected && styles.modelItemCardLocked,
-                            isSelected && (getGlowStyle("#6366f1", 0.15) as any),
-                            {
-                              transform: [{ scale: pressed ? 0.98 : 1 }]
-                            }
-                          ]}
+                    {activeTab === "nvidia" && fetchingModels ? (
+                      <View style={{ paddingVertical: 24, alignItems: "center", width: "100%" }}>
+                        <Text style={{ color: "#7C3AED", fontSize: 13, fontWeight: "700" }}>
+                          🔮 Mengambil daftar model dinamis dari NVIDIA NIM...
+                        </Text>
+                      </View>
+                    ) : activeTab === "nvidia" && fetchError ? (
+                      <View style={{ paddingVertical: 12, width: "100%", gap: 8 }}>
+                        <Text style={{ color: "#DC2626", fontSize: 13, fontWeight: "600" }}>
+                          ⚠️ {fetchError}
+                        </Text>
+                        <Pressable 
+                          onPress={() => void loadDynamicNvidiaModels(nvidiaKey)}
+                          style={{ alignSelf: "flex-start", backgroundColor: "rgba(241,245,249,0.8)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: "rgba(0,0,0,0.08)" }}
                         >
-                          <View style={styles.modelItemHeader}>
-                            <Text style={[styles.modelItemLabel, isSelected && { color: "#ffffff" }]}>
-                              {model.label}
-                            </Text>
-                            {isSelected ? (
-                              <CheckCircleIcon color="#10b981" size={16} />
-                            ) : !connected ? (
-                              <Badge text="KEY REQUIRED" color="#ef4444" />
-                            ) : null}
-                          </View>
-                          <Text style={styles.modelItemDesc}>{model.desc}</Text>
+                          <Text style={{ color: "#334155", fontSize: 11, fontWeight: "700" }}>Coba Lagi</Text>
                         </Pressable>
-                      );
-                    })}
+                      </View>
+                    ) : (
+                      (activeTab === "nvidia" && dynamicNvidiaModels.length > 0
+                        ? dynamicNvidiaModels
+                        : PROVIDER_MODELS[activeTab]
+                      )?.map((model) => {
+                        const isSelected = preferredModel === model.value;
+                        const connected = hasKey(activeTab);
+
+                        return (
+                          <Pressable
+                            key={model.value}
+                            disabled={!connected}
+                            onPress={() => selectModel(model.value)}
+                            style={({ pressed }) => [
+                              styles.modelItemCard,
+                              isSelected ? styles.modelItemCardSelected : styles.modelItemCardNormal,
+                              !connected && styles.modelItemCardLocked,
+                              isSelected && (getGlowStyle("#4F46E5", 0.15) as any),
+                              {
+                                transform: [{ scale: pressed ? 0.98 : 1 }]
+                              }
+                            ]}
+                          >
+                            <View style={styles.modelItemHeader}>
+                              <Text style={[styles.modelItemLabel, isSelected && { color: "#ffffff" }]}>
+                                {model.label}
+                              </Text>
+                              {isSelected ? (
+                                <CheckCircleIcon color="#059669" size={16} />
+                              ) : !connected ? (
+                                <Badge text="KEY REQUIRED" color="#DC2626" />
+                              ) : null}
+                            </View>
+                            <Text style={styles.modelItemDesc}>{model.desc}</Text>
+                          </Pressable>
+                        );
+                      })
+                    )}
                   </View>
                 ) : (
                   /* Custom input panel */
@@ -294,7 +376,7 @@ export default function AIGatewayScreen() {
                         value={customModelInput}
                         onChangeText={setCustomModelInput}
                         placeholder="e.g. openai:gpt-4o"
-                        placeholderTextColor="#475569"
+                        placeholderTextColor="#94A3B8"
                         onSubmitEditing={handleCustomModelSubmit}
                         style={styles.customTextInput}
                       />
@@ -397,13 +479,13 @@ export default function AIGatewayScreen() {
                   isSuccess ? styles.alertSuccess : styles.alertError
                 ]}>
                   {isSuccess ? (
-                    <CheckCircleIcon color="#10b981" size={18} />
+                    <CheckCircleIcon color="#059669" size={18} />
                   ) : (
-                    <AlertIcon color="#ef4444" size={18} />
+                    <AlertIcon color="#DC2626" size={18} />
                   )}
                   <Text style={[
                     styles.alertText,
-                    isSuccess ? { color: "#a7f3d0" } : { color: "#fca5a5" }
+                    isSuccess ? { color: "#059669" } : { color: "#DC2626" }
                   ]}>
                     {message}
                   </Text>
@@ -421,7 +503,7 @@ export default function AIGatewayScreen() {
           {/* Activation Code / Redeem Secondary Card */}
           <Card style={[getGlassStyle(0.15, 20) as any, styles.sideCard]}>
             <View style={styles.sectionHeader}>
-              <AIGatewayIcon color="#06b6d4" size={20} />
+              <AIGatewayIcon color="#0891B2" size={20} />
               <Text style={styles.sectionTitle}>Gateway Activation</Text>
             </View>
 
@@ -444,13 +526,13 @@ export default function AIGatewayScreen() {
                   isSuccess ? styles.alertSuccess : styles.alertError
                 ]}>
                   {isSuccess ? (
-                    <CheckCircleIcon color="#10b981" size={18} />
+                    <CheckCircleIcon color="#059669" size={18} />
                   ) : (
-                    <AlertIcon color="#ef4444" size={18} />
+                    <AlertIcon color="#DC2626" size={18} />
                   )}
                   <Text style={[
                     styles.alertText,
-                    isSuccess ? { color: "#a7f3d0" } : { color: "#fca5a5" }
+                    isSuccess ? { color: "#059669" } : { color: "#DC2626" }
                   ]}>
                     {message}
                   </Text>
@@ -488,12 +570,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     paddingBottom: 16,
     marginBottom: 24,
   },
   sectionTitle: {
-    color: "#ffffff",
+    color: "#F8FAFC", // Titanium White
     fontSize: 18,
     fontWeight: "900",
     letterSpacing: -0.5,
@@ -502,14 +584,14 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   gridSectionHeader: {
-    color: "#6366f1",
+    color: "#6366F1", // Neon Indigo accent
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 1.5,
     marginTop: 12,
     marginBottom: 8,
     borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.02)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     paddingBottom: 6,
   },
   keysGrid: {
@@ -530,13 +612,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   fieldTitle: {
-    color: "#cbd5e1",
+    color: "#94A3B8", // Slate Silver
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1,
   },
   redeemTip: {
-    color: "#64748b",
+    color: "#94A3B8", // Slate Silver
     fontSize: 13,
     lineHeight: 20,
     fontWeight: "500",
@@ -552,12 +634,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   alertSuccess: {
-    backgroundColor: "rgba(16, 185, 129, 0.06)",
-    borderColor: "rgba(16, 185, 129, 0.2)",
+    backgroundColor: "rgba(5, 150, 105, 0.06)",
+    borderColor: "rgba(5, 150, 105, 0.2)",
   },
   alertError: {
-    backgroundColor: "rgba(239, 68, 68, 0.06)",
-    borderColor: "rgba(239, 68, 68, 0.2)",
+    backgroundColor: "rgba(220, 38, 38, 0.06)",
+    borderColor: "rgba(220, 38, 38, 0.2)",
   },
   alertText: {
     fontSize: 13,
@@ -565,11 +647,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  /* ==================== SELECTOR TERMINAL STYLES ==================== */
+  /* ==================== SELECTOR STYLES ==================== */
   selectorTerminal: {
-    backgroundColor: "rgba(2, 6, 23, 0.35)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.03)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     borderRadius: 16,
     padding: 18,
     gap: 12,
@@ -578,21 +660,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "rgba(99, 102, 241, 0.06)",
+    backgroundColor: "rgba(99, 102, 241, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(99, 102, 241, 0.15)",
+    borderColor: "rgba(99, 102, 241, 0.25)",
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
   activeModelLabel: {
-    color: "#64748b",
+    color: "#94A3B8", // Slate Silver
     fontSize: 11,
     fontWeight: "900",
     letterSpacing: 1,
   },
   activeModelValue: {
-    color: "#ffffff",
+    color: "#F8FAFC", // Titanium White
     fontSize: 13,
     fontWeight: "900",
     letterSpacing: 0.5,
@@ -600,7 +682,7 @@ const styles = StyleSheet.create({
   tabsHeader: {
     flexDirection: "row",
     borderBottomWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     gap: 16,
     overflow: "auto" as any,
   },
@@ -623,10 +705,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   tabTextActive: {
-    color: "#ffffff",
+    color: "#F8FAFC", // Titanium White
   },
   tabTextInactive: {
-    color: "#64748b",
+    color: "#64748B",
   },
   tabIndicator: {
     position: "absolute",
@@ -653,17 +735,17 @@ const styles = StyleSheet.create({
     transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
   } as any,
   modelItemCardNormal: {
-    backgroundColor: "rgba(2, 6, 23, 0.2)",
-    borderColor: "rgba(255,255,255,0.03)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)", // Frosted obsidian slot
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   modelItemCardSelected: {
-    backgroundColor: "rgba(99, 102, 241, 0.06)",
-    borderColor: "#6366f1",
+    backgroundColor: "rgba(99, 102, 241, 0.08)",
+    borderColor: "#6366F1", // Neon Indigo active border
   },
   modelItemCardLocked: {
     opacity: 0.45,
-    backgroundColor: "rgba(0,0,0,0.1)",
-    borderColor: "rgba(255,255,255,0.01)",
+    backgroundColor: "rgba(255, 255, 255, 0.01)",
+    borderColor: "rgba(255, 255, 255, 0.04)",
   },
   modelItemHeader: {
     flexDirection: "row",
@@ -671,12 +753,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modelItemLabel: {
-    color: "#94a3b8",
+    color: "#F8FAFC", // Titanium White
     fontSize: 14,
     fontWeight: "800",
   },
   modelItemDesc: {
-    color: "#64748b",
+    color: "#94A3B8", // Slate Silver description
     fontSize: 11,
     lineHeight: 16,
     fontWeight: "500",
@@ -686,7 +768,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   customInputTip: {
-    color: "#64748b",
+    color: "#64748B",
     fontSize: 11,
     fontWeight: "600",
   },
@@ -697,11 +779,11 @@ const styles = StyleSheet.create({
   },
   customTextInput: {
     flex: 1,
-    backgroundColor: "rgba(2, 6, 23, 0.5)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "rgba(255, 255, 255, 0.06)",
     borderRadius: 10,
-    color: "#ffffff",
+    color: "#F8FAFC",
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13,
@@ -709,7 +791,7 @@ const styles = StyleSheet.create({
     outlineStyle: "none",
   } as any,
   customSubmitBtn: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#4F46E5",
     paddingHorizontal: 16,
     paddingVertical: 11,
     borderRadius: 10,

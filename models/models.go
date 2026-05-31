@@ -148,3 +148,11 @@ type DirectMessage struct {
 	Content    string    `gorm:"type:text;not null" json:"content"`
 	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
+
+type AIChatMessage struct {
+	ID        uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
+	LogID     uint64    `gorm:"column:log_id;not null;index" json:"log_id"`
+	Role      string    `gorm:"type:varchar(20);not null" json:"role"` // "user" or "ai"
+	Content   string    `gorm:"type:text;not null" json:"content"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+}

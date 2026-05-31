@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button, Card, Field, Page } from "@/src/components/ui";
 import { useAuth } from "@/src/providers/AuthProvider";
-import { ProfileIcon, SecurityIcon, AIGatewayIcon } from "@/src/components/icons";
+import { ProfileIcon, SecurityIcon } from "@/src/components/icons";
 
 export default function RegisterScreen() {
   const { register, user } = useAuth();
@@ -64,30 +64,30 @@ export default function RegisterScreen() {
     <Page>
       {/* Back button to entrance landing */}
       <Pressable onPress={() => router.push("/")} style={styles.backBtn}>
-        <Text style={styles.backText}>&larr; Back to Gate</Text>
+        <Text style={styles.backText}>&larr; Back</Text>
       </Pressable>
 
       <View style={styles.layout}>
         {/* Left Side: Branding and Guide */}
         <View style={styles.brandingColumn}>
           <View style={styles.badgeRow}>
-            <ProfileIcon color="#8b5cf6" size={16} />
-            <Text style={styles.badgeText}>ACADEMIC ONBOARDING</Text>
+            <ProfileIcon color="#6366F1" size={14} />
+            <Text style={styles.badgeText}>ACCOUNT REGISTRATION</Text>
           </View>
           <Text style={styles.registerTitle}>
-            Account {"\n"}
-            <Text style={styles.violetGlow}>Registration</Text>
+            Create Your{"\n"}
+            <Text style={styles.violetGlow}>Academic Profile</Text>
           </Text>
           <Text style={styles.registerSubtitle}>
-            Create your account as a student or academic advisor. Start managing your thesis, revisions, and consultations seamlessly.
+            Register your profile to initiate structured thesis tracking. Connect with your advisor, manage revision loops, and compile supervision milestones.
           </Text>
 
           <View style={styles.infoCard}>
-            <SecurityIcon color="#06b6d4" size={18} />
+            <SecurityIcon color="#14B8A6" size={16} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.infoTitle}>PERSONALIZED ADVISORY WORKSPACE</Text>
+              <Text style={styles.infoTitle}>ROLE-BASED CONTROLS</Text>
               <Text style={styles.infoDesc}>
-                The portal keeps student research drafts and advisor notes secure and beautifully segregated, offering absolute privacy.
+                Access levels are strictly segregated between students and advisors to maintain professional boundaries and progress audit compliance.
               </Text>
             </View>
           </View>
@@ -96,7 +96,7 @@ export default function RegisterScreen() {
         {/* Right Side: Step Registration Console Card */}
         <View style={styles.formColumn}>
           <Card style={styles.card}>
-            <Text style={styles.cardHeader}>Registration Workspace</Text>
+            <Text style={styles.cardHeader}>Registration Console</Text>
             <Text style={styles.cardSub}>Select your academic role and provide the required information.</Text>
 
             {/* Custom Tab Role Switcher */}
@@ -106,7 +106,7 @@ export default function RegisterScreen() {
                 style={[styles.roleTab, role === "student" && styles.roleTabActive]}
               >
                 <Text style={[styles.roleTabText, role === "student" && styles.roleTabTextActive]}>
-                  Student
+                  Student Profile
                 </Text>
               </Pressable>
               <Pressable
@@ -122,13 +122,13 @@ export default function RegisterScreen() {
             {/* Registration Fields */}
             <View style={styles.formFields}>
               <Field
-                label="Full Name"
-                placeholder="e.g., Jonathan Doe"
+                label="Full Name & Credentials"
+                placeholder="Jonathan Doe, M.Sc."
                 value={form.name}
                 onChangeText={(v) => patch("name", v)}
               />
               <Field
-                label="Academic Email Address"
+                label="Institutional Email Address"
                 placeholder="email@university.edu"
                 autoCapitalize="none"
                 keyboardType="email-address"
@@ -136,8 +136,8 @@ export default function RegisterScreen() {
                 onChangeText={(v) => patch("email", v)}
               />
               <Field
-                label="Secure Password"
-                placeholder="Minimum 6 characters"
+                label="Account Password"
+                placeholder="Minimum 8 characters"
                 secureTextEntry
                 value={form.password}
                 onChangeText={(v) => patch("password", v)}
@@ -149,14 +149,14 @@ export default function RegisterScreen() {
                     <View style={{ flex: 1 }}>
                       <Field
                         label="Student ID (NIM)"
-                        placeholder="e.g., 240601..."
+                        placeholder="240601..."
                         value={form.nim}
                         onChangeText={(v) => patch("nim", v)}
                       />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Field
-                        label="Advisor ID"
+                        label="Advisor Access Code"
                         placeholder="e.g., 1"
                         value={form.lecturer_id}
                         onChangeText={(v) => patch("lecturer_id", v)}
@@ -165,13 +165,13 @@ export default function RegisterScreen() {
                   </View>
                   <Field
                     label="Program of Study"
-                    placeholder="e.g., Computer Science"
+                    placeholder="Computer Science"
                     value={form.prodi}
                     onChangeText={(v) => patch("prodi", v)}
                   />
                   <Field
-                    label="Thesis / Manuscript Title"
-                    placeholder="e.g., Secure Distributed Architecture in Go"
+                    label="Thesis Research Title"
+                    placeholder="Secure Distributed Architecture in Go"
                     value={form.thesis_title}
                     onChangeText={(v) => patch("thesis_title", v)}
                   />
@@ -182,7 +182,7 @@ export default function RegisterScreen() {
                     <View style={{ flex: 1 }}>
                       <Field
                         label="Advisor ID Number (NIP)"
-                        placeholder="e.g., 1984..."
+                        placeholder="198001..."
                         value={form.nip}
                         onChangeText={(v) => patch("nip", v)}
                       />
@@ -190,7 +190,7 @@ export default function RegisterScreen() {
                     <View style={{ flex: 1 }}>
                       <Field
                         label="Faculty / Department"
-                        placeholder="e.g., Science and Technology"
+                        placeholder="Science and Mathematics"
                         value={form.faculty}
                         onChangeText={(v) => patch("faculty", v)}
                       />
@@ -198,7 +198,7 @@ export default function RegisterScreen() {
                   </View>
                   <Field
                     label="Primary Research Domain"
-                    placeholder="e.g., Distributed Systems & Web Security"
+                    placeholder="Distributed Systems & Software Engineering"
                     value={form.keahlian}
                     onChangeText={(v) => patch("keahlian", v)}
                   />
@@ -212,14 +212,14 @@ export default function RegisterScreen() {
               ) : null}
 
               <Button
-                title={loading ? "Registering Account..." : "Register Account"}
+                title={loading ? "Registering Profile..." : "Register Profile"}
                 onPress={() => void handleRegister()}
                 disabled={loading}
               />
             </View>
 
             <View style={styles.footerLink}>
-              <Text style={styles.footerText}>Already have an account?</Text>
+              <Text style={styles.footerText}>Already have a registered account?</Text>
               <Pressable onPress={() => router.push("/login")} style={styles.linkBtn}>
                 <Text style={styles.linkAction}>Sign In &rarr;</Text>
               </Pressable>
@@ -238,22 +238,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.02)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   backText: {
-    color: "#94a3b8",
+    color: "#94A3B8",
     fontSize: 12,
     fontWeight: "700",
   },
   layout: {
     flexDirection: "row",
-    gap: 40,
+    gap: 32,
     flexWrap: "wrap",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    marginTop: 10,
+    marginTop: 12,
   },
   brandingColumn: {
     flex: 1.2,
@@ -265,31 +265,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     alignSelf: "flex-start",
-    backgroundColor: "rgba(139, 92, 246, 0.08)",
+    backgroundColor: "rgba(99, 102, 241, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(139, 92, 246, 0.15)",
+    borderColor: "rgba(99, 102, 241, 0.16)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
   },
   badgeText: {
-    color: "#8b5cf6",
-    fontSize: 10,
+    color: "#6366F1",
+    fontSize: 9,
     fontWeight: "900",
     letterSpacing: 2,
   },
   registerTitle: {
-    color: "#ffffff",
-    fontSize: 42,
+    color: "#F8FAFC",
+    fontSize: 38,
     fontWeight: "900",
-    lineHeight: 48,
+    lineHeight: 46,
     letterSpacing: -1,
   },
   violetGlow: {
-    color: "#8b5cf6",
+    color: "#6366F1",
   },
   registerSubtitle: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 14,
     lineHeight: 22,
     fontWeight: "500",
@@ -297,22 +297,22 @@ const styles = StyleSheet.create({
   infoCard: {
     flexDirection: "row",
     gap: 14,
-    backgroundColor: "rgba(6, 182, 212, 0.04)",
+    backgroundColor: "rgba(20, 184, 166, 0.05)",
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.1)",
+    borderColor: "rgba(20, 184, 166, 0.12)",
     borderRadius: 16,
     padding: 16,
     marginTop: 12,
   },
   infoTitle: {
-    color: "#06b6d4",
-    fontSize: 11,
+    color: "#14B8A6",
+    fontSize: 10,
     fontWeight: "900",
     letterSpacing: 1,
     marginBottom: 4,
   },
   infoDesc: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 12,
     lineHeight: 18,
     fontWeight: "500",
@@ -325,23 +325,23 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   cardHeader: {
-    color: "#ffffff",
+    color: "#F8FAFC",
     fontSize: 22,
     fontWeight: "900",
     letterSpacing: -0.5,
     marginBottom: 6,
   },
   cardSub: {
-    color: "#94a3b8",
+    color: "#94A3B8",
     fontSize: 13,
     fontWeight: "500",
     marginBottom: 24,
   },
   roleTabWrapper: {
     flexDirection: "row",
-    backgroundColor: "rgba(2, 6, 23, 0.4)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 12,
     padding: 4,
     marginBottom: 24,
@@ -353,13 +353,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    transition: "all 0.2s ease",
   },
   roleTabActive: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#6366F1",
   },
   roleTabText: {
-    color: "#64748b",
+    color: "#94A3B8",
     fontSize: 12,
     fontWeight: "700",
   },
@@ -377,15 +376,15 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   errorBox: {
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    backgroundColor: "rgba(239, 68, 68, 0.06)",
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.2)",
+    borderColor: "rgba(239, 68, 68, 0.15)",
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
   },
   errorText: {
-    color: "#fca5a5",
+    color: "#DC2626",
     fontSize: 13,
     fontWeight: "600",
     textAlign: "center",
@@ -393,14 +392,14 @@ const styles = StyleSheet.create({
   footerLink: {
     marginTop: 24,
     borderTopWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     paddingTop: 20,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   footerText: {
-    color: "#64748b",
+    color: "#64748B",
     fontSize: 12,
     fontWeight: "500",
   },
@@ -408,7 +407,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   linkAction: {
-    color: "#6366f1",
+    color: "#6366F1",
     fontSize: 12,
     fontWeight: "800",
   },
