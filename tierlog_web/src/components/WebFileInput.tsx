@@ -103,7 +103,7 @@ export function WebFileInput({
                 <CheckCircleIcon color="#10b981" size={24} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.fileLabel}>DOKUMEN TERUNGGAH</Text>
+                <Text style={styles.fileLabel}>UPLOADED DOCUMENT</Text>
                 <Text style={styles.fileName} numberOfLines={1}>
                   {selectedFileName}
                 </Text>
@@ -113,9 +113,9 @@ export function WebFileInput({
             <View style={styles.emptyWrap}>
               <CloudUploadIcon color={isGlowing ? "#6366f1" : "#64748b"} size={28} />
               <Text style={[styles.instruction, isGlowing && { color: "#cbd5e1" }]}>
-                {isDragActive ? "Lepaskan berkas di sini..." : "Pilih dokumen atau tarik berkas ke sini"}
+                {isDragActive ? "Drop the file here..." : "Choose document or drag file here"}
               </Text>
-              <Text style={styles.formatTip}>Format didukung: {accept}</Text>
+              <Text style={styles.formatTip}>Supported format: {accept}</Text>
             </View>
           )}
         </Pressable>

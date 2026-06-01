@@ -106,15 +106,15 @@ func Register(c *gin.Context) {
 	}
 
 	if req.Role != models.RoleStudent && req.Role != models.RoleLecturer {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Role harus student atau lecturer"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Role must be student or lecturer"})
 		return
 	}
 	if req.Role == models.RoleStudent && (req.NIM == "" || req.LecturerID == 0) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Mahasiswa membutuhkan nim dan lecturer_id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Student requires a NIM and lecturer_id"})
 		return
 	}
 	if req.Role == models.RoleLecturer && req.NIP == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dosen membutuhkan nip"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Lecturer requires a NIP"})
 		return
 	}
 
@@ -494,7 +494,7 @@ func accessibleLog(user *models.User, logID uint64) (*models.ConsultationLog, er
 	case models.RoleLecturer:
 		query = query.Joins("JOIN students ON students.id = consultation_logs.student_id").Where("consultation_logs.id = ? AND students.lecturer_id = ?", logID, user.Lecturer.ID)
 	default:
-		return nil, errors.New("role tidak didukung")
+		return nil, errors.New("unsupported role")
 	}
 
 	if err := query.First(&log).Error; err != nil {

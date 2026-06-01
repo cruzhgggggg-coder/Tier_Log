@@ -775,6 +775,30 @@ export default function LecturerDashboardScreen() {
                                   No transcript available for this session.
                                 </Text>
                               )}
+                              {latestLog.paper_filename ? (
+                                <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.06)", paddingTop: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                                  <View style={{ flex: 1, marginRight: 10 }}>
+                                    <Text style={{ color: "#94A3B8", fontSize: 9, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>SUBMITTED MANUSCRIPT</Text>
+                                    <Text style={{ color: "#CBD5E1", fontSize: 12, fontWeight: "600" }} numberOfLines={1}>{latestLog.paper_filename}</Text>
+                                  </View>
+                                  <Pressable
+                                    onPress={() => Platform.OS === "web" && window.open(`${API_URL}/storage/paper/${latestLog.paper_filename}`)}
+                                    style={({ pressed }) => [
+                                      {
+                                        paddingHorizontal: 12,
+                                        paddingVertical: 6,
+                                        borderRadius: 8,
+                                        backgroundColor: "rgba(99, 102, 241, 0.12)",
+                                        borderWidth: 1,
+                                        borderColor: "rgba(99, 102, 241, 0.25)",
+                                      },
+                                      pressed && { opacity: 0.7 }
+                                    ]}
+                                  >
+                                    <Text style={{ color: "#6366F1", fontSize: 11, fontWeight: "800", letterSpacing: 0.5 }}>DOWNLOAD DRAFT</Text>
+                                  </Pressable>
+                                </View>
+                              ) : null}
                             </View>
                           )}
                         </>
@@ -994,11 +1018,17 @@ export default function LecturerDashboardScreen() {
                                     </View>
                                   )}
                                   {log.paper_filename && (
-                                    <View style={styles.sessionFileTag}>
+                                    <Pressable
+                                      onPress={() => Platform.OS === "web" && window.open(`${API_URL}/storage/paper/${log.paper_filename}`)}
+                                      style={({ pressed }) => [
+                                        styles.sessionFileTag,
+                                        pressed && { opacity: 0.6 }
+                                      ]}
+                                    >
                                       <Text style={styles.sessionFileTagText}>
-                                        Paper
+                                        📄 Paper (Download)
                                       </Text>
-                                    </View>
+                                    </Pressable>
                                   )}
                                   <Text style={styles.sessionFeedbackCount}>
                                     {totalItems} feedback item{totalItems !== 1 ? "s" : ""}

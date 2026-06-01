@@ -58,7 +58,7 @@ export default function SecurityScreen() {
             </Text>
             <View style={styles.securityPoint}>
               <View style={styles.bulletDot} />
-              <Text style={styles.bulletText}>Minimum requirement: 6 characters.</Text>
+              <Text style={styles.bulletText}>Minimum requirement: 8 characters.</Text>
             </View>
             <View style={styles.securityPoint}>
               <View style={styles.bulletDot} />

@@ -136,8 +136,8 @@ export function Button({
 
 // ─── Status Badge ───────────────────────────────────────────────────
 export function Badge({ text, color }: { text: string; color?: string }) {
-  const isSuccess = text.toLowerCase().includes("fixed") || text.toLowerCase().includes("validated") || text.toLowerCase().includes("clear") || text.toLowerCase().includes("setuju");
-  const isPending = text.toLowerCase().includes("pending") || text.toLowerCase().includes("new") || text.toLowerCase().includes("antrean") || text.toLowerCase().includes("revisi");
+  const isSuccess = text.toLowerCase().includes("fixed") || text.toLowerCase().includes("validated") || text.toLowerCase().includes("clear") || text.toLowerCase().includes("setuju") || text.toLowerCase().includes("approved");
+  const isPending = text.toLowerCase().includes("pending") || text.toLowerCase().includes("new") || text.toLowerCase().includes("antrean") || text.toLowerCase().includes("revisi") || text.toLowerCase().includes("queue") || text.toLowerCase().includes("revision");
 
   const badgeColor = color
     ? color

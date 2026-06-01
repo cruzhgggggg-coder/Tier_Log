@@ -91,7 +91,7 @@ export function MultiImageInput({
         <Text style={styles.label}>{label}</Text>
         {files.length > 0 && (
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{files.length} berkas</Text>
+            <Text style={styles.badgeText}>{files.length} files</Text>
           </View>
         )}
       </View>
@@ -128,8 +128,8 @@ export function MultiImageInput({
           <AnnotationIcon color={isGlowing ? "#a78bfa" : "#64748b"} size={26} />
           <Text style={[styles.instruction, isGlowing && { color: "#c4b5fd" }]}>
             {isDragActive
-              ? "Lepaskan berkas di sini..."
-              : "Tambah foto halaman yang dicoret atau DOCX revisi"}
+              ? "Drop files here..."
+              : "Add photos of crossed-out pages or revision DOCX"}
           </Text>
           <Text style={styles.formatTip}>JPG · PNG · WEBP · DOCX · Multi-file</Text>
         </Pressable>
@@ -154,7 +154,7 @@ export function MultiImageInput({
               <View style={styles.previewInfo}>
                 <Text style={styles.previewName} numberOfLines={1}>{f.name}</Text>
                 <Text style={styles.previewType}>
-                  {isImage(f) ? "📸 Foto anotasi" : "📄 DOCX revisi"}
+                  {isImage(f) ? "📸 Annotation Photo" : "📄 Revision DOCX"}
                 </Text>
               </View>
               <Pressable
