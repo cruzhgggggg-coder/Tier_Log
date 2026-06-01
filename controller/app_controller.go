@@ -915,14 +915,18 @@ func LecturerAddFeedbackV2(c *gin.Context) {
 		return
 	}
 
-	// Broadcast to real-time subscribers
+	// Broadcast to real-time subscribers — use dedicated "feedback.new" event
+	// so clients can APPEND the item instead of trying to mutate a non-existent one.
 	if WebSocketHub != nil {
-		WebSocketHub.Broadcast("consultation."+strconv.FormatUint(log.ID, 10), "feedback.status-updated", gin.H{
+		WebSocketHub.Broadcast("consultation."+strconv.FormatUint(log.ID, 10), "feedback.new", gin.H{
+			"id":                   feedback.ID,
 			"feedback_id":          feedback.ID,
 			"log_id":               feedback.ConsultationLogID,
 			"consultation_log_id":  feedback.ConsultationLogID,
+			"content":              feedback.Content,
 			"status":               feedback.Status,
 			"category":             feedback.Category,
+			"created_at":           feedback.CreatedAt,
 			"updated_by_role":      user.Role,
 		})
 	}

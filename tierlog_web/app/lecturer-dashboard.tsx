@@ -260,7 +260,7 @@ export default function LecturerDashboardScreen() {
     );
   }, [api, booting, accessToken]);
 
-  // ── realtime WebSocket ────────────────────
+  // ── realtime WebSocket ────────────────────────────────────────────────────
   useEffect(() => {
     if (!accessToken || logs.length === 0) return;
 
@@ -275,6 +275,39 @@ export default function LecturerDashboardScreen() {
     socket.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data) as { event: string; data: any };
+
+        // ── Lecturer's own dispatch reflected back (AI classify loop) ───────
+        if (payload.event === "feedback.new") {
+          const newItem = payload.data;
+          setLogs((current) =>
+            current.map((log) =>
+              log.id !== newItem.log_id
+                ? log
+                : {
+                    ...log,
+                    feedback_items: (log.feedback_items ?? []).some(
+                      (i) => i.id === (newItem.id ?? newItem.feedback_id)
+                    )
+                      ? log.feedback_items
+                      : [
+                          ...(log.feedback_items ?? []),
+                          {
+                            id: newItem.id ?? newItem.feedback_id,
+                            consultation_log_id: newItem.log_id,
+                            content: newItem.content,
+                            category: newItem.category,
+                            status: newItem.status,
+                            created_at: newItem.created_at ?? new Date().toISOString(),
+                            updated_at: newItem.created_at ?? new Date().toISOString(),
+                          } as any,
+                        ],
+                  }
+            )
+          );
+          api<DashboardStats>("/dashboard/stats").then(setStats).catch(console.error);
+        }
+
+        // ── Student changed a feedback status ────────────────────────────────
         if (payload.event === "feedback.status-updated") {
           setLogs((current) =>
             current.map((log) =>
@@ -284,17 +317,17 @@ export default function LecturerDashboardScreen() {
                     ...log,
                     feedback_items: (log.feedback_items ?? []).map((item) =>
                       item.id === payload.data.feedback_id
-                        ? { ...item, status: payload.data.status }
+                        ? { ...item, status: payload.data.status, category: payload.data.category ?? item.category }
                         : item
                     ),
                   }
             )
           );
-          // Refresh counters
+          // Always refresh dashboard counters on any status change
           api<DashboardStats>("/dashboard/stats").then(setStats).catch(console.error);
-          
+
           if (payload.data.status === "Fixed") {
-            const parentLog = logs.find(l => l.id === payload.data.log_id);
+            const parentLog = logs.find((l) => l.id === payload.data.log_id);
             const studentName = parentLog?.student?.name ?? "A student";
             showToast(
               "Revision Fixed by Student 🛠️",
@@ -302,21 +335,29 @@ export default function LecturerDashboardScreen() {
               "revision"
             );
           }
+          if (payload.data.status === "Validated" && payload.data.updated_by_role === "lecturer") {
+            // silently refresh stats — already handled above
+          }
         }
+
+        // ── Student sent a direct chat message ───────────────────────────────
         if (payload.event === "chat.direct-message") {
           setDirectMessages((current) => {
             if (current.some((m) => m.id === payload.data.id)) return current;
             return [...current, payload.data];
           });
           if (payload.data.sender_role === "student") {
-            const studentName = payload.data.sender?.name ?? "Student";
+            const parentLog = logs.find((l) => l.id === payload.data.log_id);
+            const studentName = parentLog?.student?.name ?? "Student";
             showToast(`New Message from ${studentName}`, payload.data.content, "chat");
           }
         }
       } catch (e) {
-        console.error("WS parse error:", e);
+        console.error("[WS] parse error:", e);
       }
     };
+
+    socket.onerror = (e) => console.error("[WS] error:", e);
 
     return () => socket.close();
   }, [accessToken, logs.length, api]);

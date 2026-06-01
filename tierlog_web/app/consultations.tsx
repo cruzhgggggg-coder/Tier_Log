@@ -239,56 +239,113 @@ export default function ConsultationsScreen() {
 
     void loadDirectMessages(selectedLog.id);
     void loadAIChats(selectedLog.id);
+  }, [selectedLog?.id]);
+
+  // ── Persistent WebSocket: subscribe to ALL consultation rooms so
+  //    events (new feedback, status changes, chat) land regardless of
+  //    which log is currently selected by the student.
+  useEffect(() => {
+    if (!accessToken || logs.length === 0) return;
+
+    // Close any stale connection before opening a fresh one
+    socketRef.current?.close();
 
     const socket = new WebSocket(`${API_URL.replace("http", "ws")}/ws?token=${accessToken}`);
     socketRef.current = socket;
 
     socket.onopen = () => {
-      socket.send(JSON.stringify({ action: "subscribe", room: `consultation.${selectedLog.id}` }));
+      // Subscribe to every consultation room the student has
+      logs.forEach((log) => {
+        socket.send(JSON.stringify({ action: "subscribe", room: `consultation.${log.id}` }));
+      });
     };
 
     socket.onmessage = (event) => {
-      const payload = JSON.parse(event.data) as { event: string; data: any };
-      if (payload.event === "feedback.status-updated") {
-        setLogs((current) =>
-          current.map((log) =>
-            log.id !== payload.data.log_id
-              ? log
-              : {
-                  ...log,
-                  feedback_items: log.feedback_items.map((item) =>
-                    item.id === payload.data.feedback_id
-                      ? { ...item, status: payload.data.status, category: payload.data.category ?? item.category }
-                      : item
-                  ),
-                }
-          )
-        );
-        const status = payload.data.status;
-        const msgTitle = status === "Validated" ? "Revision Approved! 🎉" : "Revision Status Updated";
-        const msgText = status === "Validated" 
-          ? "A revision feedback has been successfully validated and approved by your advisor."
-          : `A revision feedback status was changed to "${status}".`;
-        showToast(msgTitle, msgText, "revision");
-      }
-      if (payload.event === "chat.message") {
-        appendChat({ role: payload.data.role, content: payload.data.content });
-      }
-      if (payload.event === "chat.direct-message") {
-        setDirectMessages((current) => {
-          if (current.some((m) => m.id === payload.data.id)) return current;
-          return [...current, payload.data];
-        });
-        if (payload.data.sender_role === "lecturer") {
-          showToast("New Message from Advisor", payload.data.content, "chat");
+      try {
+        const payload = JSON.parse(event.data) as { event: string; data: any };
+
+        // ── New feedback item dispatched by lecturer ──────────────────
+        if (payload.event === "feedback.new") {
+          const newItem = payload.data;
+          setLogs((current) =>
+            current.map((log) =>
+              log.id !== newItem.log_id
+                ? log
+                : {
+                    ...log,
+                    feedback_items: [
+                      ...(log.feedback_items ?? []),
+                      {
+                        id: newItem.id ?? newItem.feedback_id,
+                        consultation_log_id: newItem.log_id,
+                        content: newItem.content,
+                        category: newItem.category,
+                        status: newItem.status,
+                        created_at: newItem.created_at ?? new Date().toISOString(),
+                        updated_at: newItem.created_at ?? new Date().toISOString(),
+                      } as any,
+                    ],
+                  }
+            )
+          );
+          showToast(
+            "New Revision Dispatched 📋",
+            `Your advisor added a new revision item: "${newItem.content}".`,
+            "revision"
+          );
         }
+
+        // ── Existing feedback item status / category mutated ──────────
+        if (payload.event === "feedback.status-updated") {
+          setLogs((current) =>
+            current.map((log) =>
+              log.id !== payload.data.log_id
+                ? log
+                : {
+                    ...log,
+                    feedback_items: (log.feedback_items ?? []).map((item) =>
+                      item.id === payload.data.feedback_id
+                        ? { ...item, status: payload.data.status, category: payload.data.category ?? item.category }
+                        : item
+                    ),
+                  }
+            )
+          );
+          const status = payload.data.status;
+          const msgTitle = status === "Validated" ? "Revision Approved! 🎉" : "Revision Status Updated";
+          const msgText =
+            status === "Validated"
+              ? "A revision feedback has been successfully validated and approved by your advisor."
+              : `A revision feedback status was changed to "${status}".`;
+          showToast(msgTitle, msgText, "revision");
+        }
+
+        // ── AI Oracle chat ────────────────────────────────────────────
+        if (payload.event === "chat.message") {
+          appendChat({ role: payload.data.role, content: payload.data.content });
+        }
+
+        // ── Advisor direct chat ───────────────────────────────────────
+        if (payload.event === "chat.direct-message") {
+          setDirectMessages((current) => {
+            if (current.some((m) => m.id === payload.data.id)) return current;
+            return [...current, payload.data];
+          });
+          if (payload.data.sender_role === "lecturer") {
+            showToast("New Message from Advisor", payload.data.content, "chat");
+          }
+        }
+      } catch (e) {
+        console.error("[WS] parse error:", e);
       }
     };
+
+    socket.onerror = (e) => console.error("[WS] error:", e);
 
     return () => {
       socket.close();
     };
-  }, [accessToken, selectedLog?.id]);
+  }, [accessToken, logs.length]);
 
   useEffect(() => {
     setTimeout(() => {
