@@ -1063,23 +1063,81 @@ You must respond ONLY with a JSON array where each object has:
 		return
 	}
 
-	var classifications []struct {
+	// Clean markdown block wrappers if present in AI response
+	cleanedResponse := strings.TrimSpace(aiResponse)
+	if strings.HasPrefix(cleanedResponse, "```json") {
+		cleanedResponse = strings.TrimPrefix(cleanedResponse, "```json")
+		cleanedResponse = strings.TrimSuffix(cleanedResponse, "```")
+	} else if strings.HasPrefix(cleanedResponse, "```") {
+		cleanedResponse = strings.TrimPrefix(cleanedResponse, "```")
+		cleanedResponse = strings.TrimSuffix(cleanedResponse, "```")
+	}
+	cleanedResponse = strings.TrimSpace(cleanedResponse)
+
+	type ClassificationItem struct {
 		ID       uint64 `json:"id"`
 		Category string `json:"category"`
 	}
 
-	if err := json.Unmarshal([]byte(aiResponse), &classifications); err != nil {
-		// Try to clean markdown wrap if present
-		cleaned := strings.TrimPrefix(strings.TrimSuffix(strings.TrimSpace(aiResponse), "```"), "```json")
-		if err := json.Unmarshal([]byte(cleaned), &classifications); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse AI classification: " + err.Error(), "raw_response": aiResponse})
-			return
+	var finalClassifications []ClassificationItem
+
+	// 1. Try parsing as a direct array: [{"id": 1, "category": "Major"}]
+	if err := json.Unmarshal([]byte(cleanedResponse), &finalClassifications); err == nil && len(finalClassifications) > 0 {
+		goto SAVE_TO_DB
+	}
+
+	// 2. Try parsing as an object wrapping the array in common keys: {"classifications": [...]}
+	{
+		var objectWrapper struct {
+			Classifications []ClassificationItem `json:"classifications"`
+			Feedbacks       []ClassificationItem `json:"feedbacks"`
+			Data            []ClassificationItem `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(cleanedResponse), &objectWrapper); err == nil {
+			if len(objectWrapper.Classifications) > 0 {
+				finalClassifications = objectWrapper.Classifications
+				goto SAVE_TO_DB
+			}
+			if len(objectWrapper.Feedbacks) > 0 {
+				finalClassifications = objectWrapper.Feedbacks
+				goto SAVE_TO_DB
+			}
+			if len(objectWrapper.Data) > 0 {
+				finalClassifications = objectWrapper.Data
+				goto SAVE_TO_DB
+			}
 		}
 	}
 
+	// 3. Try parsing as a direct key-value map: {"1": "Major", "2": "Minor"}
+	{
+		var mapWrapper map[string]string
+		if err := json.Unmarshal([]byte(cleanedResponse), &mapWrapper); err == nil && len(mapWrapper) > 0 {
+			for k, v := range mapWrapper {
+				id, parseErr := strconv.ParseUint(k, 10, 64)
+				if parseErr == nil {
+					finalClassifications = append(finalClassifications, ClassificationItem{
+						ID:       id,
+						Category: v,
+					})
+				}
+			}
+			if len(finalClassifications) > 0 {
+				goto SAVE_TO_DB
+			}
+		}
+	}
+
+	// 4. If all fail, return a beautiful user-friendly error in plain English/Indonesian
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error": "Failed to parse AI classification results. The response format returned by the AI was not recognized. Please try sorting again.",
+	})
+	return
+
+SAVE_TO_DB:
 	// Save to DB and prepare broadcast payloads
 	tx := koneksi.DB.Begin()
-	for _, cl := range classifications {
+	for _, cl := range finalClassifications {
 		if cl.Category == "Major" || cl.Category == "Minor" {
 			tx.Model(&models.FeedbackItem{}).Where("id = ? AND log_id = ?", cl.ID, log.ID).Update("category", cl.Category)
 		}
