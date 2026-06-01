@@ -469,8 +469,9 @@ export default function ConsultationsScreen() {
 
   return (
     <RequireAuth>
-      <Page>
-        <NavBar />
+      <View style={{ flex: 1 }}>
+        <Page>
+          <NavBar />
         
         <Heading
           title="Consultation Workspace"
@@ -1470,58 +1471,59 @@ export default function ConsultationsScreen() {
             </Card>
           </View>
         )}
-        
-        {/* Floating Toast Notification Container */}
-        <View style={{ position: Platform.OS === "web" ? "fixed" : "absolute", top: 80, right: 20, zIndex: 99999, gap: 10, width: 320 }}>
-          {toasts.map(toast => {
-            const translateAnim = toast.animatedValue.interpolate({
-              inputRange: [0, 1],
-              outputRange: [340, 0], // slide from right
-            });
-            const opacityAnim = toast.animatedValue;
-            
-            let icon = "🔔";
-            let color = "#6366F1";
-            if (toast.type === "chat") {
-              icon = "💬";
-              color = "#0891B2";
-            } else if (toast.type === "revision") {
-              icon = "✅";
-              color = "#059669";
-            }
-            
-            return (
-              <Animated.View
-                key={toast.id}
-                style={[
-                  {
-                    opacity: opacityAnim,
-                    transform: [{ translateX: translateAnim }],
-                    padding: 16,
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: "rgba(255, 255, 255, 0.08)",
-                    backgroundColor: "rgba(15, 23, 42, 0.95)",
-                    flexDirection: "row",
-                    gap: 12,
-                    alignItems: "center",
-                  },
-                  getGlassStyle(0.2, 14) as any,
-                  getGlowStyle(color, 0.1) as any,
-                ]}
-              >
-                <Text style={{ fontSize: 20 }}>{icon}</Text>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={{ color: "#ffffff", fontSize: 13, fontWeight: "800" }}>{toast.title}</Text>
-                  <Text style={{ color: "#CBD5E1", fontSize: 11, fontWeight: "500" }} numberOfLines={2}>{toast.message}</Text>
-                </View>
-              </Animated.View>
-            );
-          })}
-        </View>
       </Page>
-    </RequireAuth>
-  );
+      
+      {/* Floating Toast Notification Container (floating over layout) */}
+      <View style={{ position: Platform.OS === "web" ? "fixed" : "absolute", top: 80, right: 20, zIndex: 99999, gap: 10, width: 320 }}>
+        {toasts.map(toast => {
+          const translateAnim = toast.animatedValue.interpolate({
+            inputRange: [0, 1],
+            outputRange: [340, 0], // slide from right
+          });
+          const opacityAnim = toast.animatedValue;
+          
+          let icon = "🔔";
+          let color = "#6366F1";
+          if (toast.type === "chat") {
+            icon = "💬";
+            color = "#0891B2";
+          } else if (toast.type === "revision") {
+            icon = "✅";
+            color = "#059669";
+          }
+          
+          return (
+            <Animated.View
+              key={toast.id}
+              style={[
+                {
+                  opacity: opacityAnim,
+                  transform: [{ translateX: translateAnim }],
+                  padding: 16,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: "rgba(255, 255, 255, 0.08)",
+                  backgroundColor: "rgba(15, 23, 42, 0.95)",
+                  flexDirection: "row",
+                  gap: 12,
+                  alignItems: "center",
+                },
+                getGlassStyle(0.2, 14) as any,
+                getGlowStyle(color, 0.1) as any,
+              ]}
+            >
+              <Text style={{ fontSize: 20 }}>{icon}</Text>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: "#ffffff", fontSize: 13, fontWeight: "800" }}>{toast.title}</Text>
+                <Text style={{ color: "#CBD5E1", fontSize: 11, fontWeight: "500" }} numberOfLines={2}>{toast.message}</Text>
+              </View>
+            </Animated.View>
+          );
+        })}
+      </View>
+    </View>
+  </RequireAuth>
+);
 }
 
 const styles = StyleSheet.create({

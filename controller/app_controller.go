@@ -1008,34 +1008,48 @@ func SendDirectMessage(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "Message sent successfully", "data": msg})
 }
 
-func extractJSONString(input string) string {
+// extractJSONBounds returns the tightest JSON substring found in input.
+// It prefers a leading '{' object, otherwise a leading '[' array.
+func extractJSONBounds(input string) string {
+	input = strings.TrimSpace(input)
+	// Strip common markdown code fences
+	for _, fence := range []string{"```json", "```JSON", "```"} {
+		if strings.HasPrefix(input, fence) {
+			input = strings.TrimPrefix(input, fence)
+			if idx := strings.LastIndex(input, "```"); idx != -1 {
+				input = input[:idx]
+			}
+			input = strings.TrimSpace(input)
+			break
+		}
+	}
+
 	firstBrace := strings.Index(input, "{")
 	firstBracket := strings.Index(input, "[")
-	
+
 	start := -1
+	var closing string
 	if firstBrace != -1 && (firstBracket == -1 || firstBrace < firstBracket) {
 		start = firstBrace
-	} else {
+		closing = "}"
+	} else if firstBracket != -1 {
 		start = firstBracket
+		closing = "]"
 	}
-	
+
 	if start == -1 {
 		return input
 	}
-	
-	end := -1
-	if start == firstBrace {
-		end = strings.LastIndex(input, "}")
-	} else {
-		end = strings.LastIndex(input, "]")
-	}
-	
+
+	end := strings.LastIndex(input, closing)
 	if end == -1 || end < start {
 		return input
 	}
-	
 	return input[start : end+1]
 }
+
+// Kept for backward compatibility — some call sites still use the old name.
+func extractJSONString(input string) string { return extractJSONBounds(input) }
 
 // ClassifyFeedbackV2 uses the student's own API key to classify all raw feedback items
 // for a consultation log into HOC (Major) and LOC (Minor).
@@ -1065,38 +1079,42 @@ func ClassifyFeedbackV2(c *gin.Context) {
 		return
 	}
 
-	// Build the prompts
-	var itemsJson []gin.H
-	for _, item := range log.FeedbackItems {
-		itemsJson = append(itemsJson, gin.H{
-			"id":      item.ID,
-			"content": item.Content,
-		})
+	// Build the item list for the AI
+	type classificationInput struct {
+		ID      uint64 `json:"id"`
+		Content string `json:"content"`
 	}
-	itemsData, _ := json.Marshal(itemsJson)
+	var inputItems []classificationInput
+	for _, item := range log.FeedbackItems {
+		inputItems = append(inputItems, classificationInput{ID: item.ID, Content: item.Content})
+	}
+	itemsData, _ := json.Marshal(inputItems)
 
-	systemPrompt := `You are an expert academic advisor assistant.
-Your task is to classify a list of thesis/manuscript revision feedback items into one of two categories:
-- "Major" (Higher Order Concerns / HOC): Focuses on core substance such as research structure, arguments, methodology, analysis, research model, or thesis title.
-- "Minor" (Lower Order Concerns / LOC): Focuses on technicalities, formatting, typos, citation styles, bibliography, spacing, spelling, or grammar.
+	// NOTE: json_object mode forces the model to return an OBJECT ({}), not a bare array ([]).
+	// We therefore ask for {"items": [...]} which every model can produce reliably.
+	systemPrompt := `You are an expert academic writing advisor.
 
-You must respond ONLY with a JSON array where each object has:
-{
-  "id": <number>,
-  "category": "Major" or "Minor"
-}`
+Your task: classify each feedback item below as either "Major" or "Minor".
+- "Major" (HOC – Higher Order Concerns): core substance — research structure, arguments, methodology, analysis, research model, thesis title.
+- "Minor" (LOC – Lower Order Concerns): surface-level — formatting, typos, citation style, bibliography, spacing, spelling, grammar.
 
-	aiResponse, err := callAI(user, systemPrompt, string(itemsData), true)
+Return ONLY valid JSON in this exact shape — no explanation, no markdown, no extra text:
+{"items":[{"id":1,"category":"Major"},{"id":2,"category":"Minor"}]}`
+
+	userPrompt := fmt.Sprintf("Classify the following feedback items:\n%s", string(itemsData))
+
+	aiResponse, err := callAI(user, systemPrompt, userPrompt, true)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "AI classification failed: " + err.Error()})
 		return
 	}
 
 	// Print raw response in terminal for debugging
-	fmt.Printf("\033[33m[AI CLASSIFICATION RAW RESPONSE]:\033[0m\n%s\n", aiResponse)
+	fmt.Printf("\033[33m[AI CLASSIFICATION RAW RESPONSE]:\033[0m\n%s\n\033[0m", aiResponse)
 
-	// Clean markdown block wrappers & extract exact JSON bounds to ignore conversational text
-	cleanedResponse := extractJSONString(aiResponse)
+	// Strip markdown fences and find JSON boundaries
+	cleanedResponse := extractJSONBounds(aiResponse)
+	fmt.Printf("\033[36m[AI CLASSIFICATION CLEANED]:\033[0m\n%s\n\033[0m", cleanedResponse)
 
 	type ClassificationItem struct {
 		ID       uint64 `json:"id"`
@@ -1105,45 +1123,48 @@ You must respond ONLY with a JSON array where each object has:
 
 	var finalClassifications []ClassificationItem
 
-	// 1. Try parsing as a direct array: [{"id": 1, "category": "Major"}]
+	// ── Attempt 1: {"items": [...]} — the shape we asked for
+	{
+		var wrapper struct {
+			Items           []ClassificationItem `json:"items"`
+			Classifications []ClassificationItem `json:"classifications"`
+			Feedbacks       []ClassificationItem `json:"feedbacks"`
+			Data            []ClassificationItem `json:"data"`
+			Results         []ClassificationItem `json:"results"`
+		}
+		if err := json.Unmarshal([]byte(cleanedResponse), &wrapper); err == nil {
+			switch {
+			case len(wrapper.Items) > 0:
+				finalClassifications = wrapper.Items
+				goto SAVE_TO_DB
+			case len(wrapper.Classifications) > 0:
+				finalClassifications = wrapper.Classifications
+				goto SAVE_TO_DB
+			case len(wrapper.Feedbacks) > 0:
+				finalClassifications = wrapper.Feedbacks
+				goto SAVE_TO_DB
+			case len(wrapper.Data) > 0:
+				finalClassifications = wrapper.Data
+				goto SAVE_TO_DB
+			case len(wrapper.Results) > 0:
+				finalClassifications = wrapper.Results
+				goto SAVE_TO_DB
+			}
+		}
+	}
+
+	// ── Attempt 2: bare array [{"id":1,"category":"Major"}, ...]
 	if err := json.Unmarshal([]byte(cleanedResponse), &finalClassifications); err == nil && len(finalClassifications) > 0 {
 		goto SAVE_TO_DB
 	}
 
-	// 2. Try parsing as an object wrapping the array in common keys: {"classifications": [...]}
+	// ── Attempt 3: flat map {"1": "Major", "2": "Minor"}
 	{
-		var objectWrapper struct {
-			Classifications []ClassificationItem `json:"classifications"`
-			Feedbacks       []ClassificationItem `json:"feedbacks"`
-			Data            []ClassificationItem `json:"data"`
-		}
-		if err := json.Unmarshal([]byte(cleanedResponse), &objectWrapper); err == nil {
-			if len(objectWrapper.Classifications) > 0 {
-				finalClassifications = objectWrapper.Classifications
-				goto SAVE_TO_DB
-			}
-			if len(objectWrapper.Feedbacks) > 0 {
-				finalClassifications = objectWrapper.Feedbacks
-				goto SAVE_TO_DB
-			}
-			if len(objectWrapper.Data) > 0 {
-				finalClassifications = objectWrapper.Data
-				goto SAVE_TO_DB
-			}
-		}
-	}
-
-	// 3. Try parsing as a direct key-value map: {"1": "Major", "2": "Minor"}
-	{
-		var mapWrapper map[string]string
-		if err := json.Unmarshal([]byte(cleanedResponse), &mapWrapper); err == nil && len(mapWrapper) > 0 {
-			for k, v := range mapWrapper {
-				id, parseErr := strconv.ParseUint(k, 10, 64)
-				if parseErr == nil {
-					finalClassifications = append(finalClassifications, ClassificationItem{
-						ID:       id,
-						Category: v,
-					})
+		var flatMap map[string]string
+		if err := json.Unmarshal([]byte(cleanedResponse), &flatMap); err == nil && len(flatMap) > 0 {
+			for k, v := range flatMap {
+				if id, parseErr := strconv.ParseUint(k, 10, 64); parseErr == nil {
+					finalClassifications = append(finalClassifications, ClassificationItem{ID: id, Category: v})
 				}
 			}
 			if len(finalClassifications) > 0 {
@@ -1152,7 +1173,33 @@ You must respond ONLY with a JSON array where each object has:
 		}
 	}
 
-	// 4. If all fail, return a beautiful user-friendly error in plain English/Indonesian
+	// ── Attempt 4: regex scan — last resort when JSON is badly formed
+	{
+		// Find patterns like "id":5,"category":"Major" anywhere in the string
+		for _, item := range log.FeedbackItems {
+			idStr := strconv.FormatUint(item.ID, 10)
+			// Look for the id near a category label anywhere in the response
+			idMarker := `"id":` + idStr
+			if idx := strings.Index(aiResponse, idMarker); idx != -1 {
+				chunk := aiResponse[idx:]
+				if len(chunk) > 80 {
+					chunk = chunk[:80]
+				}
+				chunk = strings.ToLower(chunk)
+				cat := "Minor"
+				if strings.Contains(chunk, "major") {
+					cat = "Major"
+				}
+				finalClassifications = append(finalClassifications, ClassificationItem{ID: item.ID, Category: cat})
+			}
+		}
+		if len(finalClassifications) > 0 {
+			fmt.Printf("\033[33m[AI CLASSIFICATION] Used regex fallback — %d items recovered\033[0m\n", len(finalClassifications))
+			goto SAVE_TO_DB
+		}
+	}
+
+	// ── All attempts failed
 	c.JSON(http.StatusInternalServerError, gin.H{
 		"error": "Failed to parse AI classification results. The response format returned by the AI was not recognized. Please try sorting again.",
 	})
