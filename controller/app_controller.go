@@ -1008,6 +1008,35 @@ func SendDirectMessage(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "Message sent successfully", "data": msg})
 }
 
+func extractJSONString(input string) string {
+	firstBrace := strings.Index(input, "{")
+	firstBracket := strings.Index(input, "[")
+	
+	start := -1
+	if firstBrace != -1 && (firstBracket == -1 || firstBrace < firstBracket) {
+		start = firstBrace
+	} else {
+		start = firstBracket
+	}
+	
+	if start == -1 {
+		return input
+	}
+	
+	end := -1
+	if start == firstBrace {
+		end = strings.LastIndex(input, "}")
+	} else {
+		end = strings.LastIndex(input, "]")
+	}
+	
+	if end == -1 || end < start {
+		return input
+	}
+	
+	return input[start : end+1]
+}
+
 // ClassifyFeedbackV2 uses the student's own API key to classify all raw feedback items
 // for a consultation log into HOC (Major) and LOC (Minor).
 func ClassifyFeedbackV2(c *gin.Context) {
@@ -1063,16 +1092,11 @@ You must respond ONLY with a JSON array where each object has:
 		return
 	}
 
-	// Clean markdown block wrappers if present in AI response
-	cleanedResponse := strings.TrimSpace(aiResponse)
-	if strings.HasPrefix(cleanedResponse, "```json") {
-		cleanedResponse = strings.TrimPrefix(cleanedResponse, "```json")
-		cleanedResponse = strings.TrimSuffix(cleanedResponse, "```")
-	} else if strings.HasPrefix(cleanedResponse, "```") {
-		cleanedResponse = strings.TrimPrefix(cleanedResponse, "```")
-		cleanedResponse = strings.TrimSuffix(cleanedResponse, "```")
-	}
-	cleanedResponse = strings.TrimSpace(cleanedResponse)
+	// Print raw response in terminal for debugging
+	fmt.Printf("\033[33m[AI CLASSIFICATION RAW RESPONSE]:\033[0m\n%s\n", aiResponse)
+
+	// Clean markdown block wrappers & extract exact JSON bounds to ignore conversational text
+	cleanedResponse := extractJSONString(aiResponse)
 
 	type ClassificationItem struct {
 		ID       uint64 `json:"id"`
